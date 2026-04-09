@@ -67,7 +67,7 @@ function MaterialModal({ material, onClose, onSaved }: {
             </div>
             <div>
               <label className="label">Tipo *</label>
-              <select className="input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+              <select className="input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as 'MARBLE' | 'GRANITE' | 'QUARTZITE' | 'OTHER' }))}>
                 <option value="MARBLE">Mármore</option>
                 <option value="GRANITE">Granito</option>
                 <option value="QUARTZITE">Quartzito</option>
@@ -76,7 +76,7 @@ function MaterialModal({ material, onClose, onSaved }: {
             </div>
             <div>
               <label className="label">Acabamento</label>
-              <select className="input" value={form.finish} onChange={e => setForm(f => ({ ...f, finish: e.target.value }))}>
+              <select className="input" value={form.finish} onChange={e => setForm(f => ({ ...f, finish: e.target.value as 'POLISHED' | 'BRUSHED' | 'HONED' | 'NATURAL' }))}>
                 <option value="POLISHED">Polido</option>
                 <option value="BRUSHED">Escovado</option>
                 <option value="HONED">Acetinado</option>
