@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, FolderOpen, FileText, Package,
-  BarChart3, Settings, X, ChevronRight
+  BarChart3, X, ChevronRight, Building2, CreditCard,
+  Users, Shield, Settings
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import clsx from 'clsx';
@@ -12,20 +13,54 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/projetos', icon: FolderOpen, label: 'Projetos' },
-  { to: '/orcamentos', icon: FileText, label: 'Orçamentos' },
-  { to: '/materiais', icon: Package, label: 'Materiais' },
-  { to: '/relatorios', icon: BarChart3, label: 'Relatórios' },
+const gestorNavItems = [
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/projetos', icon: FolderOpen, label: 'Projetos', end: false },
+  { to: '/orcamentos', icon: FileText, label: 'Orçamentos', end: false },
+  { to: '/materiais', icon: Package, label: 'Materiais', end: false },
+  { to: '/relatorios', icon: BarChart3, label: 'Relatórios', end: false },
 ];
 
-const adminItems = [
-  { to: '/admin', icon: Settings, label: 'Administração' },
+const adminNavItems = [
+  { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/admin/empresas', icon: Building2, label: 'Empresas', end: false },
+  { to: '/admin/planos', icon: CreditCard, label: 'Planos SaaS', end: false },
+  { to: '/admin/usuarios', icon: Users, label: 'Usuários', end: false },
+  { to: '/admin/relatorios', icon: BarChart3, label: 'Relatórios', end: false },
+  { to: '/admin/logs', icon: Shield, label: 'Logs de Auditoria', end: false },
+  { to: '/admin/configuracoes', icon: Settings, label: 'Configurações', end: false },
 ];
+
+function NavItem({ item, onClose }: { item: typeof adminNavItems[0]; onClose: () => void }) {
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      onClick={onClose}
+      className={({ isActive }) =>
+        clsx(
+          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group relative',
+          isActive
+            ? 'bg-navy-800 text-white border-l-4 border-amber-500 pl-2'
+            : 'text-slate-300 hover:bg-navy-800 hover:text-white'
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <item.icon size={18} className={isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'} />
+          <span className="flex-1">{item.label}</span>
+          {isActive && <ChevronRight size={14} />}
+        </>
+      )}
+    </NavLink>
+  );
+}
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const { isAdmin } = useAuth();
+  const navItems = isAdmin ? adminNavItems : gestorNavItems;
+  const subtitle = isAdmin ? 'Administração SaaS' : 'Orçamentação Inteligente';
 
   return (
     <aside
@@ -41,7 +76,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           <img src={logo} alt="MarmoDecor" className="w-10 h-10 rounded-lg object-cover" />
           <div>
             <div className="font-bold text-white text-sm leading-tight">MarmoDecor</div>
-            <div className="text-navy-300 text-xs">Orçamentação Inteligente</div>
+            <div className="text-navy-300 text-xs">{subtitle}</div>
           </div>
         </div>
         <button onClick={onClose} className="lg:hidden text-navy-300 hover:text-white">
@@ -51,64 +86,16 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
+        {isAdmin && (
+          <div className="mb-2 px-3">
+            <span className="text-xs font-semibold text-navy-400 uppercase tracking-wider">Gestão da Plataforma</span>
+          </div>
+        )}
         <div className="space-y-0.5">
           {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={onClose}
-              className={({ isActive }) =>
-                clsx(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group relative',
-                  isActive
-                    ? 'bg-navy-800 text-white border-l-4 border-amber-500 pl-2'
-                    : 'text-slate-300 hover:bg-navy-800 hover:text-white'
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon size={18} className={isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'} />
-                  <span className="flex-1">{item.label}</span>
-                  {isActive && <ChevronRight size={14} />}
-                </>
-              )}
-            </NavLink>
+            <NavItem key={item.to} item={item} onClose={onClose} />
           ))}
         </div>
-
-        {isAdmin && (
-          <>
-            <div className="mt-6 mb-2 px-3">
-              <span className="text-xs font-semibold text-navy-400 uppercase tracking-wider">Administração</span>
-            </div>
-            <div className="space-y-0.5">
-              {adminItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={onClose}
-                  className={({ isActive }) =>
-                    clsx(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group relative',
-                      isActive
-                        ? 'bg-navy-800 text-white border-l-4 border-amber-500 pl-2'
-                        : 'text-slate-300 hover:bg-navy-800 hover:text-white'
-                    )
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <item.icon size={18} className={isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'} />
-                      <span className="flex-1">{item.label}</span>
-                      {isActive && <ChevronRight size={14} />}
-                    </>
-                  )}
-                </NavLink>
-              ))}
-            </div>
-          </>
-        )}
       </nav>
 
       {/* Footer */}

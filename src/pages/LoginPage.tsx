@@ -19,7 +19,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/dashboard');
+      const stored = localStorage.getItem('marmodecor_user');
+      const role = stored ? JSON.parse(stored).role : 'GESTOR';
+      navigate(role === 'ADMIN' ? '/admin' : '/dashboard');
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'E-mail ou senha incorretos';
       setError(message);
