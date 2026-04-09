@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, FolderOpen, FileText, Package,
-  BarChart3, Settings, X, Gem, ChevronRight
+  BarChart3, Settings, X, ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import clsx from 'clsx';
+import logo from '../../assets/logo.png';
 
 interface SidebarProps {
   open: boolean;
@@ -35,11 +36,9 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       )}
     >
       {/* Logo */}
-      <div className="flex items-center justify-between px-5 py-5 border-b border-navy-800">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-navy-800">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-amber-600 rounded-lg flex items-center justify-center">
-            <Gem size={16} className="text-white" />
-          </div>
+          <img src={logo} alt="MarmoDecor" className="w-10 h-10 rounded-lg object-cover" />
           <div>
             <div className="font-bold text-white text-sm leading-tight">MarmoDecor</div>
             <div className="text-navy-300 text-xs">Orçamentação Inteligente</div>

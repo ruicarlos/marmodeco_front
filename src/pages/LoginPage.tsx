@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Gem, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import logo from '../assets/logo.png';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -39,9 +40,7 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-r from-navy-900 to-navy-700 px-8 py-8 text-center">
-            <div className="w-14 h-14 bg-white/10 rounded-xl flex items-center justify-center mx-auto mb-3">
-              <Gem size={28} className="text-amber-400" />
-            </div>
+            <img src={logo} alt="MarmoDecor" className="w-20 h-20 rounded-xl object-cover mx-auto mb-3 shadow-lg" />
             <h1 className="text-2xl font-bold text-white">MarmoDecor</h1>
             <p className="text-navy-200 text-sm mt-1">Automação de Orçamentação para Mármores</p>
           </div>
