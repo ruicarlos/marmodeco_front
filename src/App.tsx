@@ -16,6 +16,7 @@ import AdminPlanosPage from './pages/admin/AdminPlanosPage';
 import AdminUsuariosPage from './pages/admin/AdminUsuariosPage';
 import AdminLogsPage from './pages/admin/AdminLogsPage';
 import AdminRelatoriosPage from './pages/admin/AdminRelatoriosPage';
+import AdminFinanceiroPage from './pages/admin/AdminFinanceiroPage';
 import AdminConfiguracoesPage from './pages/admin/AdminConfiguracoesPage';
 
 function PrivateRoute({ children, adminOnly = false, gestorOnly = false }: {
@@ -58,6 +59,7 @@ function AppRoutes() {
         <Route path="/admin/empresas" element={<AdminEmpresasPage />} />
         <Route path="/admin/planos" element={<AdminPlanosPage />} />
         <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
+        <Route path="/admin/financeiro" element={<AdminFinanceiroPage />} />
         <Route path="/admin/relatorios" element={<AdminRelatoriosPage />} />
         <Route path="/admin/logs" element={<AdminLogsPage />} />
         <Route path="/admin/configuracoes" element={<AdminConfiguracoesPage />} />
