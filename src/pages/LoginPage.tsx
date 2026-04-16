@@ -49,7 +49,7 @@ export default function LoginPage() {
           <div className="flex items-center gap-3">
             <img src={logo} alt="MarmoDecor" className="w-12 h-12 rounded-lg object-cover shadow-lg" />
             <span style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.5rem', fontWeight: 600, color: 'white', letterSpacing: '0.05em' }}>
-              MARMODECO
+              MARMODECOR
             </span>
           </div>
 
@@ -67,7 +67,7 @@ export default function LoginPage() {
           {/* Bottom */}
           <div className="flex items-center gap-2">
             <div className="w-8 h-px bg-slate-500" />
-            <span className="text-xs text-slate-500">Marmodeco © {new Date().getFullYear()}</span>
+            <span className="text-xs text-slate-500">Marmodecor © {new Date().getFullYear()}</span>
           </div>
         </div>
       </div>
@@ -80,7 +80,7 @@ export default function LoginPage() {
           <div className="flex lg:hidden flex-col items-center mb-8">
             <img src={logo} alt="MarmoDecor" className="w-16 h-16 rounded-xl object-cover shadow mb-3" />
             <span style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.8rem', fontWeight: 600, color: '#1a2744', letterSpacing: '0.05em' }}>
-              MARMODECO
+              MARMODECOR
             </span>
           </div>
 
