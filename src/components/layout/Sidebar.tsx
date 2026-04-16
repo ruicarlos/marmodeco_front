@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, FolderOpen, FileText, Package,
   BarChart3, X, ChevronRight, Building2, CreditCard,
-  Users, Shield, Settings, DollarSign
+  Activity, Settings, DollarSign
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import clsx from 'clsx';
@@ -25,10 +25,9 @@ const adminNavItems = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/empresas', icon: Building2, label: 'Empresas', end: false },
   { to: '/admin/financeiro', icon: DollarSign, label: 'Financeiro', end: false },
-  { to: '/admin/planos', icon: CreditCard, label: 'Planos SaaS', end: false },
-  { to: '/admin/usuarios', icon: Users, label: 'Usuários', end: false },
+  { to: '/admin/planos', icon: CreditCard, label: 'Planos', end: false },
+  { to: '/admin/operacoes', icon: Activity, label: 'Operações', end: false },
   { to: '/admin/relatorios', icon: BarChart3, label: 'Relatórios', end: false },
-  { to: '/admin/logs', icon: Shield, label: 'Logs de Auditoria', end: false },
   { to: '/admin/configuracoes', icon: Settings, label: 'Configurações', end: false },
 ];
 

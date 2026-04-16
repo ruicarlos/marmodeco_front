@@ -19,6 +19,7 @@ export interface Company {
   plan: 'BASIC' | 'PRO' | 'ENTERPRISE';
   active: boolean;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Project {

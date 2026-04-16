@@ -15,6 +15,7 @@ import AdminEmpresasPage from './pages/admin/AdminEmpresasPage';
 import AdminPlanosPage from './pages/admin/AdminPlanosPage';
 import AdminUsuariosPage from './pages/admin/AdminUsuariosPage';
 import AdminLogsPage from './pages/admin/AdminLogsPage';
+import AdminOperacoesPage from './pages/admin/AdminOperacoesPage';
 import AdminRelatoriosPage from './pages/admin/AdminRelatoriosPage';
 import AdminFinanceiroPage from './pages/admin/AdminFinanceiroPage';
 import AdminConfiguracoesPage from './pages/admin/AdminConfiguracoesPage';
@@ -61,6 +62,7 @@ function AppRoutes() {
         <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
         <Route path="/admin/financeiro" element={<AdminFinanceiroPage />} />
         <Route path="/admin/relatorios" element={<AdminRelatoriosPage />} />
+        <Route path="/admin/operacoes" element={<AdminOperacoesPage />} />
         <Route path="/admin/logs" element={<AdminLogsPage />} />
         <Route path="/admin/configuracoes" element={<AdminConfiguracoesPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
