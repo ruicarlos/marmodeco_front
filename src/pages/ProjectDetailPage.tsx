@@ -4,7 +4,7 @@ import api from '../services/api';
 import { Project, Room } from '../types';
 import {
   ArrowLeft, Upload, Plus, Trash2, Edit2, Save, X,
-  FileText, Layers, DollarSign, Loader2, File, CheckCircle2
+  FileText, Layers, DollarSign, Loader2, File, CheckCircle2, Download
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -21,6 +21,8 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [exportingDXF, setExportingDXF] = useState(false);
   const [editingStatus, setEditingStatus] = useState(false);
   const [newStatus, setNewStatus] = useState('');
   const [addingRoom, setAddingRoom] = useState(false);
@@ -46,9 +48,10 @@ export default function ProjectDetailPage() {
     fd.append('file', file);
     setUploading(true);
     try {
-      await api.post(`/projects/${id}/files`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const res = await api.post(`/projects/${id}/files`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setUploadMessage(res.data.message || 'Arquivo enviado com sucesso');
       setUploadSuccess(true);
-      setTimeout(() => setUploadSuccess(false), 3000);
+      setTimeout(() => setUploadSuccess(false), 5000);
       load();
     } catch (err: unknown) {
       alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro ao enviar arquivo');
@@ -99,6 +102,24 @@ export default function ProjectDetailPage() {
       load();
     } finally {
       setSavingRoom(false);
+    }
+  };
+
+  const handleExportDXF = async () => {
+    if (!id) return;
+    setExportingDXF(true);
+    try {
+      const res = await api.get(`/reports/projects/${id}/dxf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `projeto-${project?.name?.replace(/[^a-zA-Z0-9_-]/g, '_') ?? id}.dxf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Erro ao exportar DXF');
+    } finally {
+      setExportingDXF(false);
     }
   };
 
@@ -185,8 +206,18 @@ export default function ProjectDetailPage() {
             </div>
             {uploadSuccess && (
               <div className="mb-3 flex items-center gap-2 text-emerald-600 text-xs bg-emerald-50 p-2 rounded">
-                <CheckCircle2 size={13} /> Arquivo enviado com sucesso!
+                <CheckCircle2 size={13} /> {uploadMessage}
               </div>
+            )}
+            {(project.rooms?.length ?? 0) > 0 && (
+              <button
+                onClick={handleExportDXF}
+                disabled={exportingDXF}
+                className="btn-secondary text-xs w-full justify-center mb-3"
+              >
+                {exportingDXF ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                {exportingDXF ? 'Exportando...' : 'Exportar DXF'}
+              </button>
             )}
             {project.files?.length === 0 ? (
               <div className="text-center py-6">
@@ -311,7 +342,10 @@ export default function ProjectDetailPage() {
                           <div className="flex gap-3 mt-0.5 text-xs text-slate-500">
                             <span>{room.area.toFixed(2)} m²</span>
                             {room.perimeter > 0 && <span>· {room.perimeter.toFixed(2)} m perímetro</span>}
-                            {room.isManual && <span className="text-navy-600">· Manual</span>}
+                            {room.isManual
+                              ? <span className="text-navy-600">· Manual</span>
+                              : <span className="text-emerald-600">· Extraído do CAD</span>
+                            }
                           </div>
                           {room.notes && <p className="text-xs text-slate-400 mt-0.5">{room.notes}</p>}
                         </div>
