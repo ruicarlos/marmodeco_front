@@ -3,8 +3,9 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
 import { Budget, Material, Room, BudgetAdjustment } from '../types';
 import {
-  ArrowLeft, Download, CheckCircle2, XCircle, FileSpreadsheet, FileText,
+  ArrowLeft, CheckCircle2, XCircle, FileSpreadsheet, FileText,
   Loader2, Pencil, Trash2, Check, X, Plus, Save, UserCheck, Tag,
+  CreditCard, Banknote, Smartphone, SplitSquareHorizontal,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -53,6 +54,15 @@ export default function BudgetDetailPage() {
   // adjustment add form
   const [addingAdj, setAddingAdj] = useState(false);
   const [adjForm,   setAdjForm  ] = useState({ description: '', type: 'COST', valueType: 'FIXED', value: '' });
+
+  // approval / sale modal
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  type PayMethod = 'CARD' | 'PIX' | 'CASH' | 'MIXED';
+  const [payMethod, setPayMethod] = useState<PayMethod>('PIX');
+  const [mixedPayments, setMixedPayments] = useState<{ method: 'CARD' | 'PIX' | 'CASH'; amount: string }[]>([
+    { method: 'PIX',  amount: '' },
+    { method: 'CARD', amount: '' },
+  ]);
 
   const load = () => {
     if (!id) return;
@@ -170,6 +180,21 @@ export default function BudgetDetailPage() {
     await api.put(`/budgets/${id}`, { status });
     setSaving(false);
     load();
+  };
+
+  const handleApprove = async () => {
+    setSaving(true);
+    try {
+      const payments = payMethod === 'MIXED'
+        ? mixedPayments.filter(p => parseFloat(p.amount) > 0).map(p => ({ method: p.method, amount: parseFloat(p.amount) }))
+        : [];
+      await api.post('/sales', { budgetId: id, paymentMethod: payMethod, payments });
+      setShowApproveModal(false);
+      load();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      alert(msg || 'Erro ao aprovar orçamento');
+    } finally { setSaving(false); }
   };
 
   // ── downloads ──────────────────────────────────────────────────────────────
@@ -291,13 +316,18 @@ export default function BudgetDetailPage() {
         )}
         {budget.status === 'PENDING' && (
           <>
-            <button onClick={() => handleStatus('APPROVED')} className="btn-primary text-xs bg-emerald-600 hover:bg-emerald-700" disabled={saving}>
-              <CheckCircle2 size={13} /> Aprovar
+            <button onClick={() => setShowApproveModal(true)} className="btn-primary text-xs bg-emerald-600 hover:bg-emerald-700" disabled={saving}>
+              <CheckCircle2 size={13} /> Aprovar / Vender
             </button>
             <button onClick={() => handleStatus('REJECTED')} className="btn-secondary text-xs text-red-600 border-red-200" disabled={saving}>
               <XCircle size={13} /> Rejeitar
             </button>
           </>
+        )}
+        {budget.status === 'APPROVED' && budget.sale && (
+          <span className="inline-flex items-center gap-1.5 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg font-medium">
+            <CheckCircle2 size={13} /> Venda registrada
+          </span>
         )}
       </div>
 
@@ -644,6 +674,112 @@ export default function BudgetDetailPage() {
           {budget.approvedAt && <span>· Aprovado em {format(new Date(budget.approvedAt), 'dd MMM yyyy', { locale: ptBR })}</span>}
         </div>
       </div>
+
+      {/* ── Approve / Sale Modal ── */}
+      {showApproveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <div>
+                <h3 className="font-bold text-slate-800">Aprovar Orçamento</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Selecione a forma de pagamento</p>
+              </div>
+              <button onClick={() => setShowApproveModal(false)} className="btn-ghost p-1.5"><X size={18} /></button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Total */}
+              <div className="bg-navy-50 rounded-xl p-4 text-center">
+                <p className="text-xs text-slate-500 mb-1">Valor Total</p>
+                <p className="text-2xl font-bold text-navy-800">R$ {budget.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              </div>
+
+              {/* Payment method selector */}
+              <div>
+                <label className="label text-xs mb-2">Forma de Pagamento</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { k: 'PIX',   label: 'Pix',    Icon: Smartphone },
+                    { k: 'CARD',  label: 'Cartão', Icon: CreditCard },
+                    { k: 'CASH',  label: 'Dinheiro', Icon: Banknote },
+                    { k: 'MIXED', label: 'Misto',  Icon: SplitSquareHorizontal },
+                  ] as const).map(({ k, label, Icon }) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setPayMethod(k)}
+                      className={clsx(
+                        'flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all',
+                        payMethod === k
+                          ? 'border-navy-600 bg-navy-50 text-navy-700'
+                          : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                      )}
+                    >
+                      <Icon size={16} /> {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Mixed split */}
+              {payMethod === 'MIXED' && (
+                <div className="space-y-2">
+                  <label className="label text-xs">Distribuição dos valores</label>
+                  {mixedPayments.map((p, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <select
+                        className="input text-sm flex-shrink-0 w-32"
+                        value={p.method}
+                        onChange={e => setMixedPayments(mp => mp.map((x, j) => j === i ? { ...x, method: e.target.value as 'PIX' | 'CARD' | 'CASH' } : x))}
+                      >
+                        <option value="PIX">Pix</option>
+                        <option value="CARD">Cartão</option>
+                        <option value="CASH">Dinheiro</option>
+                      </select>
+                      <input
+                        className="input text-sm flex-1"
+                        type="number" step="0.01" min="0" placeholder="R$ 0,00"
+                        value={p.amount}
+                        onChange={e => setMixedPayments(mp => mp.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
+                      />
+                      {mixedPayments.length > 1 && (
+                        <button onClick={() => setMixedPayments(mp => mp.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 p-1">
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setMixedPayments(mp => [...mp, { method: 'CASH', amount: '' }])}
+                    className="text-xs text-navy-600 hover:text-navy-800 flex items-center gap-1"
+                  >
+                    <Plus size={12} /> Adicionar método
+                  </button>
+                  {(() => {
+                    const total = mixedPayments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+                    const diff  = Math.abs(total - budget.totalCost);
+                    if (total > 0 && diff > 0.01) {
+                      return <p className="text-xs text-amber-600">Soma: R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (faltam R$ {(budget.totalCost - total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})</p>;
+                    }
+                    return null;
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-2xl">
+              <button onClick={() => setShowApproveModal(false)} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={handleApprove} disabled={saving} className="btn-primary flex-1 bg-emerald-600 hover:bg-emerald-700">
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                Confirmar Venda
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

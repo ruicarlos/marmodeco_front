@@ -125,6 +125,7 @@ export interface Budget {
   approvedAt?: string;
   items?: BudgetItem[];
   adjustments?: BudgetAdjustment[];
+  sale?: Sale;
   _count?: { items: number };
   createdAt: string;
   updatedAt: string;
@@ -142,6 +143,52 @@ export interface BudgetItem {
   unitPrice: number;
   subtotal: number;
   notes?: string;
+}
+
+export interface SalePayment {
+  id: string;
+  saleId: string;
+  method: 'CARD' | 'PIX' | 'CASH';
+  amount: number;
+  paidAt?: string;
+  createdAt: string;
+}
+
+export interface Sale {
+  id: string;
+  budgetId: string;
+  budget?: Budget & {
+    project?: { id: string; name: string; clientName?: string };
+    seller?: Seller;
+  };
+  userId: string;
+  companyId?: string;
+  clientName?: string;
+  totalAmount: number;
+  paymentMethod: 'CARD' | 'PIX' | 'CASH' | 'MIXED';
+  status: 'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED';
+  notes?: string;
+  paidAt?: string;
+  payments?: SalePayment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FinancialEntry {
+  id: string;
+  userId: string;
+  companyId?: string;
+  type: 'RECEIVABLE' | 'PAYABLE';
+  description: string;
+  amount: number;
+  dueDate?: string;
+  paidAt?: string;
+  status: 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+  category?: string;
+  saleId?: string;
+  sale?: Sale;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SubscriptionPlan {
