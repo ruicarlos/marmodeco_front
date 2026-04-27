@@ -201,7 +201,7 @@ export default function ProjectDetailPage() {
               <label className={clsx('btn-primary text-xs cursor-pointer px-3 py-1.5', uploading && 'opacity-50 cursor-not-allowed')}>
                 {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
                 {uploading ? 'Enviando...' : 'Importar'}
-                <input type="file" className="hidden" accept=".pdf,.dwg,.dxf" onChange={handleFileUpload} disabled={uploading} />
+                <input type="file" className="hidden" accept=".dxf" onChange={handleFileUpload} disabled={uploading} />
               </label>
             </div>
             {uploadSuccess && (
@@ -223,7 +223,7 @@ export default function ProjectDetailPage() {
               <div className="text-center py-6">
                 <File size={28} className="text-slate-300 mx-auto mb-2" />
                 <p className="text-xs text-slate-400">Nenhum arquivo importado</p>
-                <p className="text-xs text-slate-400">Aceita: PDF, DWG, DXF</p>
+                <p className="text-xs text-slate-400">Aceita: DXF</p>
               </div>
             ) : (
               <div className="space-y-2">
