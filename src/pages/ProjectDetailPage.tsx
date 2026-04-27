@@ -5,7 +5,7 @@ import { Project, Room, Material } from '../types';
 import {
   ArrowLeft, Upload, Plus, Trash2, Edit2, Save, X,
   FileText, Layers, DollarSign, Loader2, File, CheckCircle2,
-  Download, ClipboardList, ChevronDown, ChevronUp,
+  Download, ClipboardList, ChevronDown, ChevronUp, CheckSquare, Square,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -103,10 +103,12 @@ export default function ProjectDetailPage() {
   const [detailsForm,    setDetailsForm    ] = useState({ projectType: '', deadline: '' });
 
   // rooms
-  const [addingRoom,  setAddingRoom ] = useState(false);
-  const [roomForm,    setRoomForm   ] = useState({ name: '', area: '', perimeter: '', notes: '' });
-  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
-  const [savingRoom,  setSavingRoom ] = useState(false);
+  const [addingRoom,   setAddingRoom  ] = useState(false);
+  const [roomForm,     setRoomForm    ] = useState({ name: '', area: '', perimeter: '', notes: '' });
+  const [editingRoom,  setEditingRoom ] = useState<Room | null>(null);
+  const [savingRoom,   setSavingRoom  ] = useState(false);
+  const [selectedRooms, setSelectedRooms] = useState<Set<string>>(new Set());
+  const [deletingBulk,  setDeletingBulk ] = useState(false);
 
   // budget wizard
   const [wizardOpen,   setWizardOpen  ] = useState(false);
@@ -215,7 +217,32 @@ export default function ProjectDetailPage() {
   const handleDeleteRoom = async (roomId: string) => {
     if (!confirm('Excluir este ambiente?')) return;
     await api.delete(`/projects/${id}/rooms/${roomId}`);
+    setSelectedRooms(s => { const n = new Set(s); n.delete(roomId); return n; });
     load();
+  };
+
+  const toggleRoom = (roomId: string) =>
+    setSelectedRooms(s => { const n = new Set(s); n.has(roomId) ? n.delete(roomId) : n.add(roomId); return n; });
+
+  const toggleAll = () => {
+    const allIds = project?.rooms?.map(r => r.id) ?? [];
+    setSelectedRooms(s => s.size === allIds.length ? new Set() : new Set(allIds));
+  };
+
+  const handleBulkDelete = async () => {
+    const count = selectedRooms.size;
+    if (!count) return;
+    if (!confirm(`Excluir ${count} ambiente(s) selecionado(s)? Esta ação não pode ser desfeita.`)) return;
+    setDeletingBulk(true);
+    try {
+      await Promise.all([...selectedRooms].map(roomId => api.delete(`/projects/${id}/rooms/${roomId}`)));
+      setSelectedRooms(new Set());
+      load();
+    } catch {
+      alert('Erro ao excluir ambientes');
+    } finally {
+      setDeletingBulk(false);
+    }
   };
 
   const handleExportDXF = async () => {
@@ -504,12 +531,33 @@ export default function ProjectDetailPage() {
           <div className="card">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
+                {/* Select-all checkbox */}
+                {(project.rooms?.length ?? 0) > 0 && (
+                  <button onClick={toggleAll} className="text-slate-400 hover:text-navy-700 transition-colors">
+                    {selectedRooms.size > 0 && selectedRooms.size === (project.rooms?.length ?? 0)
+                      ? <CheckSquare size={16} className="text-navy-700" />
+                      : selectedRooms.size > 0
+                        ? <CheckSquare size={16} className="text-navy-400" />
+                        : <Square size={16} />
+                    }
+                  </button>
+                )}
                 <Layers size={16} className="text-slate-500" />
                 <h2 className="font-semibold text-slate-800">Ambientes</h2>
                 <span className="badge-gray">{project.rooms?.length ?? 0}</span>
               </div>
               <div className="flex items-center gap-2">
-                {(project.rooms?.length ?? 0) > 0 && !wizardOpen && (
+                {/* Bulk delete bar */}
+                {selectedRooms.size > 0 && (
+                  <button onClick={handleBulkDelete} disabled={deletingBulk}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-60">
+                    {deletingBulk
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : <Trash2 size={13} />}
+                    Excluir {selectedRooms.size} selecionado{selectedRooms.size !== 1 ? 's' : ''}
+                  </button>
+                )}
+                {(project.rooms?.length ?? 0) > 0 && !wizardOpen && selectedRooms.size === 0 && (
                   <button onClick={openWizard}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors">
                     <ClipboardList size={13} />
@@ -558,47 +606,60 @@ export default function ProjectDetailPage() {
               </div>
             ) : (
               <div className="divide-y divide-slate-50">
-                {project.rooms?.map(room => (
-                  <div key={room.id} className="p-4">
-                    {editingRoom?.id === room.id ? (
-                      <form onSubmit={handleEditRoom} className="space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <input className="input text-sm col-span-2" value={editingRoom.name}
-                            onChange={e => setEditingRoom({ ...editingRoom, name: e.target.value })} required />
-                          <input className="input text-sm" type="number" step="0.01" placeholder="Área (m²)"
-                            value={editingRoom.area}
-                            onChange={e => setEditingRoom({ ...editingRoom, area: parseFloat(e.target.value) || 0 })} />
-                          <input className="input text-sm" type="number" step="0.01" placeholder="Perímetro (m)"
-                            value={editingRoom.perimeter}
-                            onChange={e => setEditingRoom({ ...editingRoom, perimeter: parseFloat(e.target.value) || 0 })} />
-                        </div>
-                        <div className="flex gap-2">
-                          <button type="submit" className="btn-primary text-xs" disabled={savingRoom}><Save size={12} /> Salvar</button>
-                          <button type="button" onClick={() => setEditingRoom(null)} className="btn-secondary text-xs"><X size={12} /> Cancelar</button>
-                        </div>
-                      </form>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-slate-800">{room.name}</p>
-                          <div className="flex gap-3 mt-0.5 text-xs text-slate-500">
-                            <span>{room.area.toFixed(2)} m²</span>
-                            {room.perimeter > 0 && <span>· {room.perimeter.toFixed(2)} m périm.</span>}
-                            {room.isManual
-                              ? <span className="text-navy-600">· Manual</span>
-                              : <span className="text-emerald-600">· Extraído do CAD</span>
+                {project.rooms?.map(room => {
+                  const isSelected = selectedRooms.has(room.id);
+                  return (
+                    <div key={room.id}
+                      className={clsx('p-4 transition-colors', isSelected && 'bg-red-50')}
+                    >
+                      {editingRoom?.id === room.id ? (
+                        <form onSubmit={handleEditRoom} className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <input className="input text-sm col-span-2" value={editingRoom.name}
+                              onChange={e => setEditingRoom({ ...editingRoom, name: e.target.value })} required />
+                            <input className="input text-sm" type="number" step="0.01" placeholder="Área (m²)"
+                              value={editingRoom.area}
+                              onChange={e => setEditingRoom({ ...editingRoom, area: parseFloat(e.target.value) || 0 })} />
+                            <input className="input text-sm" type="number" step="0.01" placeholder="Perímetro (m)"
+                              value={editingRoom.perimeter}
+                              onChange={e => setEditingRoom({ ...editingRoom, perimeter: parseFloat(e.target.value) || 0 })} />
+                          </div>
+                          <div className="flex gap-2">
+                            <button type="submit" className="btn-primary text-xs" disabled={savingRoom}><Save size={12} /> Salvar</button>
+                            <button type="button" onClick={() => setEditingRoom(null)} className="btn-secondary text-xs"><X size={12} /> Cancelar</button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          {/* Checkbox */}
+                          <button onClick={() => toggleRoom(room.id)}
+                            className="shrink-0 text-slate-300 hover:text-navy-700 transition-colors">
+                            {isSelected
+                              ? <CheckSquare size={16} className="text-red-500" />
+                              : <Square size={16} />
                             }
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800">{room.name}</p>
+                            <div className="flex gap-3 mt-0.5 text-xs text-slate-500">
+                              <span>{room.area.toFixed(2)} m²</span>
+                              {room.perimeter > 0 && <span>· {room.perimeter.toFixed(2)} m périm.</span>}
+                              {room.isManual
+                                ? <span className="text-navy-600">· Manual</span>
+                                : <span className="text-emerald-600">· Extraído do CAD</span>
+                              }
+                            </div>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <button onClick={() => setEditingRoom(room)} className="btn-ghost p-1.5"><Edit2 size={14} /></button>
+                            <button onClick={() => handleDeleteRoom(room.id)}
+                              className="btn-ghost p-1.5 text-red-400 hover:text-red-600"><Trash2 size={14} /></button>
                           </div>
                         </div>
-                        <div className="flex gap-1">
-                          <button onClick={() => setEditingRoom(room)} className="btn-ghost p-1.5"><Edit2 size={14} /></button>
-                          <button onClick={() => handleDeleteRoom(room.id)}
-                            className="btn-ghost p-1.5 text-red-400 hover:text-red-600"><Trash2 size={14} /></button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
