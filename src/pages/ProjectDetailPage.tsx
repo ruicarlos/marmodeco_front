@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { Project, Room } from '../types';
 import {
   ArrowLeft, Upload, Plus, Trash2, Edit2, Save, X,
-  FileText, Layers, DollarSign, Loader2, File, CheckCircle2, Download
+  FileText, Layers, DollarSign, Loader2, File, CheckCircle2, Download, Sparkles
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -24,6 +24,7 @@ const PROJECT_TYPE_OPTIONS = [
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -34,6 +35,7 @@ export default function ProjectDetailPage() {
   const [newStatus, setNewStatus] = useState('');
   const [editingDetails, setEditingDetails] = useState(false);
   const [detailsForm, setDetailsForm] = useState({ projectType: '', deadline: '' });
+  const [generatingBudget, setGeneratingBudget] = useState(false);
   const [addingRoom, setAddingRoom] = useState(false);
   const [roomForm, setRoomForm] = useState({ name: '', area: '', perimeter: '', notes: '' });
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
@@ -79,6 +81,18 @@ export default function ProjectDetailPage() {
     await api.put(`/projects/${id}`, { status: newStatus });
     setEditingStatus(false);
     load();
+  };
+
+  const handleAutoBudget = async () => {
+    setGeneratingBudget(true);
+    try {
+      const res = await api.post(`/projects/${id}/auto-budget`);
+      navigate(`/orcamentos/${res.data.data.id}`);
+    } catch (err: unknown) {
+      alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro ao gerar orçamento');
+    } finally {
+      setGeneratingBudget(false);
+    }
   };
 
   const handleDetailsSave = async () => {
@@ -341,9 +355,21 @@ export default function ProjectDetailPage() {
                 <h2 className="font-semibold text-slate-800">Ambientes</h2>
                 <span className="badge-gray">{project.rooms?.length ?? 0}</span>
               </div>
-              <button onClick={() => setAddingRoom(true)} className="btn-primary text-xs px-3 py-1.5">
-                <Plus size={13} /> Adicionar
-              </button>
+              <div className="flex items-center gap-2">
+                {(project.rooms?.length ?? 0) > 0 && (
+                  <button
+                    onClick={handleAutoBudget}
+                    disabled={generatingBudget}
+                    className="btn-secondary text-xs px-3 py-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+                  >
+                    {generatingBudget ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    {generatingBudget ? 'Gerando...' : 'Gerar Orçamento'}
+                  </button>
+                )}
+                <button onClick={() => setAddingRoom(true)} className="btn-primary text-xs px-3 py-1.5">
+                  <Plus size={13} /> Adicionar
+                </button>
+              </div>
             </div>
 
             {/* Add Room Form */}

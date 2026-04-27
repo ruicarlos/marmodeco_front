@@ -186,8 +186,8 @@ export default function IndicadoresPage() {
   const prodRecords = records.filter(r => r.type === 'PRODUTIVIDADE').sort((a, b) => new Date(a.period).getTime() - new Date(b.period).getTime());
   const oeeRecords  = records.filter(r => r.type === 'OEE').sort((a, b) => new Date(a.period).getTime() - new Date(b.period).getTime());
 
-  const latestProd = prodRecords.at(-1);
-  const latestOEE  = oeeRecords.at(-1);
+  const latestProd = prodRecords[prodRecords.length - 1];
+  const latestOEE  = oeeRecords[oeeRecords.length - 1];
 
   const prodChartData = prodRecords.map(r => ({
     period: format(new Date(r.period), 'MMM/yy', { locale: ptBR }),

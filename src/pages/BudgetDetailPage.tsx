@@ -1,159 +1,421 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
-import { Budget } from '../types';
-import { ArrowLeft, Download, CheckCircle2, XCircle, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
+import { Budget, Material, Room } from '../types';
+import {
+  ArrowLeft, Download, CheckCircle2, XCircle, FileSpreadsheet, FileText,
+  Loader2, Pencil, Trash2, Check, X, Plus, Save,
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import clsx from 'clsx';
 
+// ── constants ────────────────────────────────────────────────────────────────
+
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  DRAFT: { label: 'Rascunho', cls: 'badge-gray' },
-  PENDING: { label: 'Pendente', cls: 'badge-yellow' },
-  APPROVED: { label: 'Aprovado', cls: 'badge-green' },
-  REJECTED: { label: 'Rejeitado', cls: 'badge-red' },
+  DRAFT:    { label: 'Rascunho',          cls: 'badge-gray'   },
+  PENDING:  { label: 'Pendente',          cls: 'badge-yellow' },
+  APPROVED: { label: 'Aprovado',          cls: 'badge-green'  },
+  REJECTED: { label: 'Rejeitado',         cls: 'badge-red'    },
+};
+const TYPE_MAP: Record<string, string> = {
+  MARBLE: 'Mármore', GRANITE: 'Granito', QUARTZITE: 'Quartzito', OTHER: 'Outro',
 };
 
-const TYPE_MAP: Record<string, string> = {
-  MARBLE: 'Mármore', GRANITE: 'Granito', QUARTZITE: 'Quartzito', OTHER: 'Outro'
-};
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function fmt(n: number) {
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ── main component ───────────────────────────────────────────────────────────
 
 export default function BudgetDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [budget, setBudget] = useState<Budget | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
+  const [budget, setBudget]       = useState<Budget | null>(null);
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [rooms, setRooms]         = useState<Room[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [saving, setSaving]       = useState(false);
+
+  // inline item edit
+  const [editId, setEditId]       = useState<string | null>(null);
+  const [editForm, setEditForm]   = useState({ materialId: '', area: '', unitPrice: '' });
+
+  // add item
+  const [addingItem, setAddingItem] = useState(false);
+  const [addForm, setAddForm]       = useState({ roomId: '', materialId: '', area: '', unitPrice: '' });
+
+  // costs edit
+  const [editCosts, setEditCosts]   = useState(false);
+  const [costsForm, setCostsForm]   = useState({ laborCost: '0', extraCost: '0', discount: '0', notes: '', validUntil: '' });
 
   const load = () => {
     if (!id) return;
-    api.get(`/budgets/${id}`).then(r => setBudget(r.data.data)).finally(() => setLoading(false));
+    setLoading(true);
+    api.get(`/budgets/${id}`)
+      .then(r => {
+        const b: Budget = r.data.data;
+        setBudget(b);
+        setCostsForm({
+          laborCost:  String(b.laborCost),
+          extraCost:  String(b.extraCost),
+          discount:   String(b.discount),
+          notes:      b.notes    || '',
+          validUntil: b.validUntil ? b.validUntil.substring(0, 10) : '',
+        });
+        // load materials + rooms for the project
+        api.get('/materials/all').then(m => setMaterials(m.data.data));
+        if (b.projectId) {
+          api.get(`/projects/${b.projectId}/rooms`).then(rm => {
+            setRooms(rm.data.data);
+            setAddForm(f => ({ ...f, roomId: rm.data.data[0]?.id || '', materialId: '', area: '', unitPrice: '' }));
+          });
+        }
+      })
+      .finally(() => setLoading(false));
   };
 
   useEffect(load, [id]);
 
+  // can edit items only on DRAFT / PENDING
+  const canEdit = budget?.status === 'DRAFT' || budget?.status === 'PENDING';
+
+  // ── item edit ──────────────────────────────────────────────────────────────
+
+  const startEdit = (item: NonNullable<Budget['items']>[0]) => {
+    setEditId(item.id);
+    setEditForm({ materialId: item.materialId, area: String(item.area), unitPrice: String(item.unitPrice) });
+    setAddingItem(false);
+  };
+
+  const cancelEdit = () => setEditId(null);
+
+  const saveEdit = async () => {
+    if (!editId) return;
+    setSaving(true);
+    try {
+      const res = await api.put(`/budgets/${id}/items/${editId}`, {
+        materialId: editForm.materialId,
+        area:       parseFloat(editForm.area)      || 0,
+        unitPrice:  parseFloat(editForm.unitPrice) || 0,
+      });
+      setBudget(res.data.data);
+      setEditId(null);
+    } catch { alert('Erro ao salvar item'); }
+    finally { setSaving(false); }
+  };
+
+  const deleteItem = async (itemId: string) => {
+    if (!confirm('Remover este item do orçamento?')) return;
+    setSaving(true);
+    try {
+      await api.delete(`/budgets/${id}/items/${itemId}`);
+      load();
+    } catch { alert('Erro ao remover item'); }
+    finally { setSaving(false); }
+  };
+
+  // ── add item ───────────────────────────────────────────────────────────────
+
+  const saveAdd = async () => {
+    setSaving(true);
+    try {
+      const res = await api.post(`/budgets/${id}/items`, {
+        roomId:     addForm.roomId,
+        materialId: addForm.materialId,
+        area:       parseFloat(addForm.area)      || 0,
+        unitPrice:  parseFloat(addForm.unitPrice) || 0,
+      });
+      setBudget(res.data.data);
+      setAddingItem(false);
+      setAddForm(f => ({ ...f, materialId: '', area: '', unitPrice: '' }));
+    } catch { alert('Erro ao adicionar item'); }
+    finally { setSaving(false); }
+  };
+
+  // when material changes in add/edit form, auto-fill unit price
+  const onMaterialChange = (matId: string, target: 'edit' | 'add') => {
+    const mat = materials.find(m => m.id === matId);
+    if (target === 'edit') setEditForm(f => ({ ...f, materialId: matId, unitPrice: String(mat?.pricePerM2 ?? f.unitPrice) }));
+    else setAddForm(f => ({ ...f, materialId: matId, unitPrice: String(mat?.pricePerM2 ?? '') }));
+  };
+
+  // ── costs edit ─────────────────────────────────────────────────────────────
+
+  const saveCosts = async () => {
+    setSaving(true);
+    try {
+      await api.put(`/budgets/${id}`, {
+        laborCost:  parseFloat(costsForm.laborCost)  || 0,
+        extraCost:  parseFloat(costsForm.extraCost)  || 0,
+        discount:   parseFloat(costsForm.discount)   || 0,
+        notes:      costsForm.notes      || null,
+        validUntil: costsForm.validUntil || undefined,
+      });
+      setEditCosts(false);
+      load();
+    } catch { alert('Erro ao salvar custos'); }
+    finally { setSaving(false); }
+  };
+
+  // ── status actions ─────────────────────────────────────────────────────────
+
   const handleStatus = async (status: string) => {
-    setUpdating(true);
+    setSaving(true);
     await api.put(`/budgets/${id}`, { status });
-    setUpdating(false);
+    setSaving(false);
     load();
   };
 
-  const downloadPDF = () => window.open(`/api/reports/budgets/${id}/pdf`, '_blank');
-  const downloadExcel = () => window.open(`/api/reports/budgets/${id}/excel`, '_blank');
+  // ── loaders ────────────────────────────────────────────────────────────────
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-navy-700" /></div>;
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-navy-700" />
+    </div>
+  );
   if (!budget) return <div className="text-center py-20 text-slate-500">Orçamento não encontrado</div>;
 
-  // Group items by room
-  const roomGroups: Record<string, typeof budget.items> = {};
+  // group items by room
+  type ItemType = NonNullable<Budget['items']>[0];
+  const roomGroups: Record<string, ItemType[]> = {};
   for (const item of budget.items ?? []) {
     const key = item.room?.name ?? 'Sem ambiente';
     if (!roomGroups[key]) roomGroups[key] = [];
     roomGroups[key].push(item);
   }
 
+  const materialsCost = (budget.items ?? []).reduce((s, i) => s + i.subtotal, 0);
+  const realArea      = (budget.items ?? []).reduce((s, i) => s + i.area,     0);
+
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Header */}
+    <div className="space-y-6 max-w-5xl mx-auto">
+
+      {/* ── Header ── */}
       <div className="flex items-center gap-3">
         <Link to="/orcamentos" className="btn-ghost p-2"><ArrowLeft size={18} /></Link>
         <div className="flex-1">
           <h1 className="text-xl font-bold text-slate-800">{budget.name}</h1>
-          <p className="text-slate-500 text-sm">{budget.project?.name} · {budget.project?.clientName || 'Sem cliente'}</p>
+          <p className="text-slate-500 text-sm">
+            {budget.project?.name}
+            {budget.project?.clientName && <> · {budget.project.clientName}</>}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={clsx('text-sm', STATUS_MAP[budget.status]?.cls ?? 'badge-gray')}>
-            {STATUS_MAP[budget.status]?.label}
-          </span>
-        </div>
+        <span className={clsx('text-sm', STATUS_MAP[budget.status]?.cls ?? 'badge-gray')}>
+          {STATUS_MAP[budget.status]?.label}
+        </span>
       </div>
 
-      {/* Actions */}
+      {/* ── Action bar ── */}
       <div className="flex flex-wrap gap-2">
-        <button onClick={downloadPDF} className="btn-secondary text-xs">
-          <FileText size={13} className="text-red-500" /> Exportar PDF
+        <button onClick={() => window.open(`/api/reports/budgets/${id}/pdf`, '_blank')} className="btn-secondary text-xs">
+          <FileText size={13} className="text-red-500" /> PDF
         </button>
-        <button onClick={downloadExcel} className="btn-secondary text-xs">
-          <FileSpreadsheet size={13} className="text-emerald-600" /> Exportar Excel
+        <button onClick={() => window.open(`/api/reports/budgets/${id}/excel`, '_blank')} className="btn-secondary text-xs">
+          <FileSpreadsheet size={13} className="text-emerald-600" /> Excel
         </button>
         {budget.status === 'DRAFT' && (
-          <button onClick={() => handleStatus('PENDING')} className="btn-secondary text-xs" disabled={updating}>
-            {updating && <Loader2 size={12} className="animate-spin" />}
-            Enviar para Aprovação
+          <button onClick={() => handleStatus('PENDING')} className="btn-secondary text-xs" disabled={saving}>
+            {saving && <Loader2 size={12} className="animate-spin" />} Enviar para Aprovação
           </button>
         )}
         {budget.status === 'PENDING' && (
           <>
-            <button onClick={() => handleStatus('APPROVED')} className="btn-primary text-xs bg-emerald-600 hover:bg-emerald-700" disabled={updating}>
+            <button onClick={() => handleStatus('APPROVED')} className="btn-primary text-xs bg-emerald-600 hover:bg-emerald-700" disabled={saving}>
               <CheckCircle2 size={13} /> Aprovar
             </button>
-            <button onClick={() => handleStatus('REJECTED')} className="btn-danger text-xs" disabled={updating}>
+            <button onClick={() => handleStatus('REJECTED')} className="btn-secondary text-xs text-red-600 border-red-200" disabled={saving}>
               <XCircle size={13} /> Rejeitar
             </button>
           </>
         )}
       </div>
 
-      {/* Info grid */}
+      {/* ── KPI cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Área Total', value: `${budget.totalArea.toFixed(2)} m²` },
-          { label: 'Total Materiais', value: `R$ ${(budget.totalCost - budget.laborCost - budget.extraCost + budget.discount).toFixed(2)}` },
-          { label: 'Mão de Obra', value: `R$ ${budget.laborCost.toFixed(2)}` },
-          { label: 'Total Geral', value: `R$ ${budget.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, highlight: true },
-        ].map(({ label, value, highlight }) => (
-          <div key={label} className={clsx('card p-4', highlight && 'bg-navy-50 border-navy-200')}>
+          { label: 'Área Total',      value: `${realArea.toFixed(2)} m²`            },
+          { label: 'Materiais',       value: `R$ ${fmt(materialsCost)}`             },
+          { label: 'Mão de Obra',     value: `R$ ${fmt(budget.laborCost)}`          },
+          { label: 'Total Geral',     value: `R$ ${fmt(budget.totalCost)}`, hi: true },
+        ].map(({ label, value, hi }) => (
+          <div key={label} className={clsx('card p-4', hi && 'bg-navy-50 border-navy-200')}>
             <p className="text-xs text-slate-500 mb-1">{label}</p>
-            <p className={clsx('text-lg font-bold', highlight ? 'text-navy-800' : 'text-slate-800')}>{value}</p>
+            <p className={clsx('text-lg font-bold', hi ? 'text-navy-800' : 'text-slate-800')}>{value}</p>
           </div>
         ))}
       </div>
 
-      {/* Items by room */}
+      {/* ── Items by room ── */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
           <h2 className="font-semibold text-slate-800">Detalhamento por Ambiente</h2>
+          {canEdit && (
+            <button onClick={() => { setAddingItem(v => !v); setEditId(null); }} className="btn-secondary text-xs px-3 py-1.5">
+              <Plus size={13} /> Adicionar Item
+            </button>
+          )}
         </div>
-        {Object.entries(roomGroups).length === 0 ? (
+
+        {/* Add-item row */}
+        {addingItem && canEdit && (
+          <div className="p-4 bg-navy-50 border-b border-navy-100">
+            <p className="text-xs font-semibold text-navy-700 mb-3">Novo item</p>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+              <div>
+                <label className="label text-xs">Ambiente</label>
+                <select className="input text-sm" value={addForm.roomId} onChange={e => setAddForm(f => ({ ...f, roomId: e.target.value }))}>
+                  {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="label text-xs">Material</label>
+                <select className="input text-sm" value={addForm.materialId} onChange={e => onMaterialChange(e.target.value, 'add')}>
+                  <option value="">— Selecione —</option>
+                  {materials.filter(m => m.active).map(m => (
+                    <option key={m.id} value={m.id}>{m.name} ({TYPE_MAP[m.type]})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label text-xs">Área (m²)</label>
+                <input className="input text-sm" type="number" step="0.01" value={addForm.area}
+                  onChange={e => setAddForm(f => ({ ...f, area: e.target.value }))} placeholder="0.00" />
+              </div>
+              <div>
+                <label className="label text-xs">R$/m²</label>
+                <input className="input text-sm" type="number" step="0.01" value={addForm.unitPrice}
+                  onChange={e => setAddForm(f => ({ ...f, unitPrice: e.target.value }))} placeholder="0.00" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button onClick={saveAdd} disabled={saving || !addForm.roomId || !addForm.materialId}
+                className="btn-primary text-xs">
+                {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Confirmar
+              </button>
+              <button onClick={() => setAddingItem(false)} className="btn-secondary text-xs"><X size={12} /> Cancelar</button>
+            </div>
+          </div>
+        )}
+
+        {/* Rooms */}
+        {Object.entries(roomGroups).length === 0 && !addingItem ? (
           <div className="py-10 text-center text-slate-400 text-sm">Nenhum item no orçamento</div>
         ) : (
           Object.entries(roomGroups).map(([roomName, items]) => {
-            const roomTotal = (items ?? []).reduce((s, it) => s + it.subtotal, 0);
-            const roomArea = (items ?? []).reduce((s, it) => s + it.area, 0);
+            const roomTotal = items.reduce((s, it) => s + it.subtotal, 0);
+            const roomArea  = items.reduce((s, it) => s + it.area,     0);
             return (
               <div key={roomName} className="border-b border-slate-100 last:border-b-0">
+                {/* Room header */}
                 <div className="flex items-center justify-between px-5 py-3 bg-slate-50">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-slate-700 text-sm">{roomName}</span>
                     <span className="text-xs text-slate-400">{roomArea.toFixed(2)} m²</span>
                   </div>
-                  <span className="font-semibold text-slate-800 text-sm">
-                    R$ {roomTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
+                  <span className="font-semibold text-slate-800 text-sm">R$ {fmt(roomTotal)}</span>
                 </div>
+
+                {/* Items table */}
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100">
-                      <th className="text-left px-5 py-2 font-medium text-slate-500 text-xs">Material</th>
-                      <th className="text-left px-4 py-2 font-medium text-slate-500 text-xs hidden md:table-cell">Tipo</th>
-                      <th className="text-right px-4 py-2 font-medium text-slate-500 text-xs">Área</th>
-                      <th className="text-right px-4 py-2 font-medium text-slate-500 text-xs">R$/m²</th>
-                      <th className="text-right px-5 py-2 font-medium text-slate-500 text-xs">Subtotal</th>
+                      <th className="text-left px-5 py-2 font-medium text-slate-400 text-xs">Material</th>
+                      <th className="text-left px-4 py-2 font-medium text-slate-400 text-xs hidden md:table-cell">Tipo</th>
+                      <th className="text-right px-4 py-2 font-medium text-slate-400 text-xs">Área (m²)</th>
+                      <th className="text-right px-4 py-2 font-medium text-slate-400 text-xs">R$/m²</th>
+                      <th className="text-right px-5 py-2 font-medium text-slate-400 text-xs">Subtotal</th>
+                      {canEdit && <th className="px-3 py-2 w-20"></th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {(items ?? []).map(item => (
-                      <tr key={item.id} className="border-b border-slate-50 last:border-0">
-                        <td className="px-5 py-2.5 text-slate-700">
-                          <div>{item.material?.name}</div>
-                          {item.material?.color && <div className="text-xs text-slate-400">{item.material.color} · {item.material.finish}</div>}
-                        </td>
-                        <td className="px-4 py-2.5 text-slate-500 hidden md:table-cell">{TYPE_MAP[item.material?.type ?? ''] ?? item.material?.type}</td>
-                        <td className="px-4 py-2.5 text-right text-slate-600">{item.area.toFixed(2)} m²</td>
-                        <td className="px-4 py-2.5 text-right text-slate-600">R$ {item.unitPrice.toFixed(2)}</td>
-                        <td className="px-5 py-2.5 text-right font-medium text-slate-800">R$ {item.subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                      </tr>
-                    ))}
+                    {items.map(item => {
+                      const isEditing = editId === item.id;
+                      const previewSubtotal = isEditing
+                        ? (parseFloat(editForm.area) || 0) * (parseFloat(editForm.unitPrice) || 0)
+                        : item.subtotal;
+                      const editMat = isEditing ? materials.find(m => m.id === editForm.materialId) : null;
+
+                      return (
+                        <tr key={item.id} className={clsx('border-b border-slate-50 last:border-0', isEditing && 'bg-amber-50')}>
+                          {/* Material */}
+                          <td className="px-5 py-2.5">
+                            {isEditing ? (
+                              <select className="input text-xs py-1" value={editForm.materialId}
+                                onChange={e => onMaterialChange(e.target.value, 'edit')}>
+                                {materials.filter(m => m.active).map(m => (
+                                  <option key={m.id} value={m.id}>{m.name}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div>
+                                <span className="text-slate-700">{item.material?.name}</span>
+                                {item.material?.color && (
+                                  <div className="text-xs text-slate-400">{item.material.color} · {item.material.finish}</div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          {/* Tipo */}
+                          <td className="px-4 py-2.5 text-slate-500 hidden md:table-cell text-xs">
+                            {isEditing
+                              ? (editMat ? TYPE_MAP[editMat.type] : '—')
+                              : TYPE_MAP[item.material?.type ?? ''] ?? item.material?.type}
+                          </td>
+                          {/* Área */}
+                          <td className="px-4 py-2.5 text-right">
+                            {isEditing ? (
+                              <input className="input text-xs py-1 text-right w-24 ml-auto" type="number" step="0.01"
+                                value={editForm.area} onChange={e => setEditForm(f => ({ ...f, area: e.target.value }))} />
+                            ) : (
+                              <span className="text-slate-600">{item.area.toFixed(2)}</span>
+                            )}
+                          </td>
+                          {/* R$/m² */}
+                          <td className="px-4 py-2.5 text-right">
+                            {isEditing ? (
+                              <input className="input text-xs py-1 text-right w-24 ml-auto" type="number" step="0.01"
+                                value={editForm.unitPrice} onChange={e => setEditForm(f => ({ ...f, unitPrice: e.target.value }))} />
+                            ) : (
+                              <span className="text-slate-600">R$ {item.unitPrice.toFixed(2)}</span>
+                            )}
+                          </td>
+                          {/* Subtotal */}
+                          <td className="px-5 py-2.5 text-right font-semibold text-slate-800">
+                            R$ {fmt(previewSubtotal)}
+                          </td>
+                          {/* Actions */}
+                          {canEdit && (
+                            <td className="px-3 py-2 text-right">
+                              {isEditing ? (
+                                <div className="flex gap-1 justify-end">
+                                  <button onClick={saveEdit} disabled={saving} title="Salvar"
+                                    className="p-1 rounded text-emerald-600 hover:bg-emerald-50">
+                                    {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                                  </button>
+                                  <button onClick={cancelEdit} title="Cancelar"
+                                    className="p-1 rounded text-slate-400 hover:bg-slate-100">
+                                    <X size={13} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex gap-1 justify-end">
+                                  <button onClick={() => startEdit(item)} title="Editar"
+                                    className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                                    <Pencil size={13} />
+                                  </button>
+                                  <button onClick={() => deleteItem(item.id)} title="Remover"
+                                    className="p-1 rounded text-red-400 hover:text-red-600 hover:bg-red-50">
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -162,39 +424,87 @@ export default function BudgetDetailPage() {
         )}
       </div>
 
-      {/* Summary */}
+      {/* ── Costs + Summary ── */}
       <div className="card p-5">
-        <h3 className="font-semibold text-slate-800 mb-4">Resumo Financeiro</h3>
-        <div className="space-y-2 max-w-sm ml-auto">
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-600">Materiais</span>
-            <span className="font-medium">R$ {(budget.totalCost - budget.laborCost - budget.extraCost + budget.discount).toFixed(2)}</span>
-          </div>
-          {budget.laborCost > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600">Mão de obra</span>
-              <span className="font-medium">R$ {budget.laborCost.toFixed(2)}</span>
-            </div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-slate-800">Resumo Financeiro</h3>
+          {canEdit && !editCosts && (
+            <button onClick={() => setEditCosts(true)} className="btn-ghost p-1.5 text-slate-400 hover:text-slate-700">
+              <Pencil size={14} />
+            </button>
           )}
-          {budget.extraCost > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600">Extras</span>
-              <span className="font-medium">R$ {budget.extraCost.toFixed(2)}</span>
-            </div>
-          )}
-          {budget.discount > 0 && (
-            <div className="flex justify-between text-sm text-red-600">
-              <span>Desconto</span>
-              <span className="font-medium">-R$ {budget.discount.toFixed(2)}</span>
-            </div>
-          )}
-          <div className="border-t border-slate-200 pt-2 flex justify-between">
-            <span className="font-semibold text-slate-800">Total</span>
-            <span className="font-bold text-lg text-navy-800">R$ {budget.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-          </div>
         </div>
 
-        {budget.notes && (
+        {editCosts ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="label text-xs">Mão de Obra (R$)</label>
+                <input className="input" type="number" step="0.01" value={costsForm.laborCost}
+                  onChange={e => setCostsForm(f => ({ ...f, laborCost: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label text-xs">Extras (R$)</label>
+                <input className="input" type="number" step="0.01" value={costsForm.extraCost}
+                  onChange={e => setCostsForm(f => ({ ...f, extraCost: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label text-xs">Desconto (R$)</label>
+                <input className="input" type="number" step="0.01" value={costsForm.discount}
+                  onChange={e => setCostsForm(f => ({ ...f, discount: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label text-xs">Válido até</label>
+                <input className="input" type="date" value={costsForm.validUntil}
+                  onChange={e => setCostsForm(f => ({ ...f, validUntil: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label text-xs">Observações</label>
+                <input className="input" value={costsForm.notes}
+                  onChange={e => setCostsForm(f => ({ ...f, notes: e.target.value }))} placeholder="Opcional" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={saveCosts} disabled={saving} className="btn-primary text-xs">
+                {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar
+              </button>
+              <button onClick={() => setEditCosts(false)} className="btn-secondary text-xs"><X size={12} /> Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2 max-w-sm ml-auto">
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Materiais</span>
+              <span className="font-medium">R$ {fmt(materialsCost)}</span>
+            </div>
+            {budget.laborCost > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Mão de obra</span>
+                <span className="font-medium">R$ {fmt(budget.laborCost)}</span>
+              </div>
+            )}
+            {budget.extraCost > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Extras</span>
+                <span className="font-medium">R$ {fmt(budget.extraCost)}</span>
+              </div>
+            )}
+            {budget.discount > 0 && (
+              <div className="flex justify-between text-sm text-red-600">
+                <span>Desconto</span>
+                <span className="font-medium">−R$ {fmt(budget.discount)}</span>
+              </div>
+            )}
+            <div className="border-t border-slate-200 pt-2 flex justify-between">
+              <span className="font-semibold text-slate-800">Total</span>
+              <span className="font-bold text-xl text-navy-800">R$ {fmt(budget.totalCost)}</span>
+            </div>
+          </div>
+        )}
+
+        {budget.notes && !editCosts && (
           <div className="mt-4 p-3 bg-slate-50 rounded-lg text-sm text-slate-600 border-l-2 border-navy-400">
             <span className="font-medium">Obs:</span> {budget.notes}
           </div>
@@ -206,6 +516,7 @@ export default function BudgetDetailPage() {
           {budget.approvedAt && <span>· Aprovado em {format(new Date(budget.approvedAt), 'dd MMM yyyy', { locale: ptBR })}</span>}
         </div>
       </div>
+
     </div>
   );
 }
