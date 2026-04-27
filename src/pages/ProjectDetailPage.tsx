@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { Project, Room, Material } from '../types';
+import { Project, Room, Material, Seller, BudgetAdjustment } from '../types';
 import {
   ArrowLeft, Upload, Plus, Trash2, Edit2, Save, X,
   FileText, Layers, DollarSign, Loader2, File, CheckCircle2,
   Download, ClipboardList, ChevronDown, ChevronUp, CheckSquare, Square,
+  UserCheck, Tag,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -52,6 +53,14 @@ type WizardRow = {
   unitPrice:    string;
 };
 
+type AdjRow = {
+  _key:        string; // local id for React key
+  description: string;
+  type:        'COST' | 'DISCOUNT';
+  valueType:   'FIXED' | 'PERCENT';
+  value:       string;
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const GRANITE_WORDS = ['cozinha', 'churrasqueira', 'externo', 'externa', 'garagem', 'lavanderia', 'serviço', 'servico'];
@@ -88,6 +97,7 @@ export default function ProjectDetailPage() {
 
   const [project,       setProject      ] = useState<Project | null>(null);
   const [materials,     setMaterials    ] = useState<Material[]>([]);
+  const [sellers,       setSellers      ] = useState<Seller[]>([]);
   const [loading,       setLoading      ] = useState(true);
   const [uploading,     setUploading    ] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
@@ -111,12 +121,14 @@ export default function ProjectDetailPage() {
   const [deletingBulk,  setDeletingBulk ] = useState(false);
 
   // budget wizard
-  const [wizardOpen,   setWizardOpen  ] = useState(false);
-  const [wizardName,   setWizardName  ] = useState('');
-  const [wizardNotes,  setWizardNotes ] = useState('');
-  const [wizardValid,  setWizardValid ] = useState('');
-  const [wizardRows,   setWizardRows  ] = useState<WizardRow[]>([]);
-  const [savingWizard, setSavingWizard] = useState(false);
+  const [wizardOpen,    setWizardOpen   ] = useState(false);
+  const [wizardName,    setWizardName   ] = useState('');
+  const [wizardNotes,   setWizardNotes  ] = useState('');
+  const [wizardValid,   setWizardValid  ] = useState('');
+  const [wizardSellerId, setWizardSellerId] = useState('');
+  const [wizardRows,    setWizardRows   ] = useState<WizardRow[]>([]);
+  const [adjRows,       setAdjRows      ] = useState<AdjRow[]>([]);
+  const [savingWizard,  setSavingWizard ] = useState(false);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -137,6 +149,7 @@ export default function ProjectDetailPage() {
   useEffect(load, [id]);
   useEffect(() => {
     api.get('/materials/all').then(r => setMaterials(r.data.data ?? []));
+    api.get('/sellers').then(r => setSellers(r.data.data ?? []));
   }, []);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -268,9 +281,22 @@ export default function ProjectDetailPage() {
     setWizardName(`Orçamento — ${project?.name ?? ''}`);
     setWizardNotes('');
     setWizardValid('');
+    setWizardSellerId('');
+    setAdjRows([]);
     setWizardOpen(true);
     setTimeout(() => document.getElementById('wizard-section')?.scrollIntoView({ behavior: 'smooth' }), 80);
   };
+
+  // ── Adjustments helpers ───────────────────────────────────────────────────
+
+  const addAdjRow = () =>
+    setAdjRows(r => [...r, { _key: Date.now().toString(), description: '', type: 'COST', valueType: 'FIXED', value: '' }]);
+
+  const updateAdj = (key: string, changes: Partial<AdjRow>) =>
+    setAdjRows(r => r.map(a => a._key === key ? { ...a, ...changes } : a));
+
+  const removeAdj = (key: string) =>
+    setAdjRows(r => r.filter(a => a._key !== key));
 
   const updateRow = (idx: number, changes: Partial<WizardRow>) =>
     setWizardRows(rows => rows.map((r, i) => i === idx ? { ...r, ...changes } : r));
@@ -304,12 +330,18 @@ export default function ProjectDetailPage() {
           unitPrice: parseFloat(r.unitPrice) || 0,
         }));
 
+      const adjustments = adjRows
+        .filter(a => a.description.trim() && parseFloat(a.value) > 0)
+        .map(a => ({ description: a.description, type: a.type, valueType: a.valueType, value: parseFloat(a.value) }));
+
       const res = await api.post('/budgets', {
         projectId:  id,
         name:       wizardName,
-        notes:      wizardNotes || undefined,
-        validUntil: wizardValid || undefined,
+        notes:      wizardNotes  || undefined,
+        validUntil: wizardValid  || undefined,
+        sellerId:   wizardSellerId || undefined,
         items,
+        adjustments,
       });
       navigate(`/orcamentos/${res.data.data.id}`);
     } catch (err: unknown) {
@@ -327,8 +359,14 @@ export default function ProjectDetailPage() {
   if (!project) return <div className="text-center py-20 text-slate-500">Projeto não encontrado</div>;
 
   const totalArea   = (project.rooms ?? []).reduce((acc, r) => acc + r.area, 0);
-  const wizardTotal = wizardRows.reduce((s, r) => s + (parseFloat(r.area) || 0) * (parseFloat(r.unitPrice) || 0), 0);
-  const wizardArea  = wizardRows.reduce((s, r) => s + (parseFloat(r.area) || 0), 0);
+  const wizardMaterials = wizardRows.reduce((s, r) => s + (parseFloat(r.area) || 0) * (parseFloat(r.unitPrice) || 0), 0);
+  const wizardArea      = wizardRows.reduce((s, r) => s + (parseFloat(r.area) || 0), 0);
+  const adjTotal = adjRows.reduce((s, a) => {
+    const v = parseFloat(a.value) || 0;
+    const computed = a.valueType === 'PERCENT' ? wizardMaterials * v / 100 : v;
+    return s + (a.type === 'COST' ? computed : -computed);
+  }, 0);
+  const wizardTotal = wizardMaterials + adjTotal;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -686,8 +724,8 @@ export default function ProjectDetailPage() {
 
           {/* Budget metadata */}
           <div className="p-5 border-b border-slate-100 bg-slate-50">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-1">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-2">
                 <label className="label text-xs">Nome do orçamento *</label>
                 <input className="input" value={wizardName}
                   onChange={e => setWizardName(e.target.value)} placeholder="Ex: Orçamento Sala Principal" />
@@ -698,10 +736,27 @@ export default function ProjectDetailPage() {
                   onChange={e => setWizardValid(e.target.value)} />
               </div>
               <div>
-                <label className="label text-xs">Observações</label>
-                <input className="input" value={wizardNotes}
-                  onChange={e => setWizardNotes(e.target.value)} placeholder="Opcional" />
+                <label className="label text-xs">
+                  <span className="flex items-center gap-1"><UserCheck size={11} /> Vendedor</span>
+                </label>
+                <div className="relative">
+                  <select className="input text-sm appearance-none pr-7" value={wizardSellerId}
+                    onChange={e => setWizardSellerId(e.target.value)}>
+                    <option value="">— Sem vendedor —</option>
+                    {sellers.filter(s => s.active).map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}{s.commission > 0 ? ` (${s.commission}%)` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
               </div>
+            </div>
+            <div className="mt-3">
+              <label className="label text-xs">Observações</label>
+              <input className="input" value={wizardNotes}
+                onChange={e => setWizardNotes(e.target.value)} placeholder="Opcional" />
             </div>
           </div>
 
@@ -814,14 +869,105 @@ export default function ProjectDetailPage() {
             })}
           </div>
 
+          {/* ── Adjustments section ─────────────────────────────────────── */}
+          <div className="border-t border-slate-100">
+            <div className="flex items-center justify-between px-5 py-3 bg-slate-50">
+              <div className="flex items-center gap-2">
+                <Tag size={14} className="text-slate-500" />
+                <span className="text-sm font-semibold text-slate-700">Custos Adicionais e Descontos</span>
+                {adjRows.length > 0 && (
+                  <span className="text-xs bg-navy-100 text-navy-700 px-2 py-0.5 rounded-full">{adjRows.length}</span>
+                )}
+              </div>
+              <button onClick={addAdjRow}
+                className="flex items-center gap-1 text-xs font-medium text-navy-700 hover:text-navy-900 hover:bg-navy-50 px-3 py-1.5 rounded-lg transition-colors">
+                <Plus size={13} /> Adicionar linha
+              </button>
+            </div>
+
+            {adjRows.length > 0 && (
+              <div className="px-5 py-3 space-y-3">
+                {/* Header labels */}
+                <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-medium text-slate-400 uppercase tracking-wide px-1">
+                  <div className="col-span-4">Descrição</div>
+                  <div className="col-span-2">Tipo</div>
+                  <div className="col-span-2">Formato</div>
+                  <div className="col-span-2">Valor</div>
+                  <div className="col-span-2 text-right">Impacto</div>
+                </div>
+                {adjRows.map(adj => {
+                  const v = parseFloat(adj.value) || 0;
+                  const computed = adj.valueType === 'PERCENT' ? wizardMaterials * v / 100 : v;
+                  const impact   = adj.type === 'COST' ? computed : -computed;
+                  return (
+                    <div key={adj._key} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-12 md:col-span-4">
+                        <input className="input text-sm" placeholder="Descrição *"
+                          value={adj.description}
+                          onChange={e => updateAdj(adj._key, { description: e.target.value })} />
+                      </div>
+                      <div className="col-span-5 md:col-span-2">
+                        <select className="input text-sm" value={adj.type}
+                          onChange={e => updateAdj(adj._key, { type: e.target.value as 'COST' | 'DISCOUNT' })}>
+                          <option value="COST">Custo (+)</option>
+                          <option value="DISCOUNT">Desconto (−)</option>
+                        </select>
+                      </div>
+                      <div className="col-span-5 md:col-span-2">
+                        <select className="input text-sm" value={adj.valueType}
+                          onChange={e => updateAdj(adj._key, { valueType: e.target.value as 'FIXED' | 'PERCENT' })}>
+                          <option value="FIXED">R$ Fixo</option>
+                          <option value="PERCENT">% Materiais</option>
+                        </select>
+                      </div>
+                      <div className="col-span-4 md:col-span-2">
+                        <div className="relative">
+                          <input className="input text-sm pr-7" type="number" step="0.01" min="0"
+                            value={adj.value} placeholder="0"
+                            onChange={e => updateAdj(adj._key, { value: e.target.value })} />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                            {adj.valueType === 'PERCENT' ? '%' : 'R$'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="col-span-6 md:col-span-2 flex items-center justify-end gap-2">
+                        {v > 0 && (
+                          <span className={clsx('text-sm font-semibold', impact >= 0 ? 'text-red-600' : 'text-emerald-600')}>
+                            {impact >= 0 ? '+' : '−'}R$ {Math.abs(impact).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        )}
+                        <button onClick={() => removeAdj(adj._key)}
+                          className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                          <X size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Wizard footer */}
           <div className="flex items-center justify-between px-5 py-4 bg-slate-50 border-t border-slate-200">
-            <div className="text-sm">
-              <span className="text-slate-500">{wizardArea.toFixed(2)} m² · </span>
-              <span className="text-slate-500">Total materiais: </span>
-              <span className="font-bold text-navy-800 text-base">
-                R$ {wizardTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </span>
+            <div className="text-sm space-y-0.5">
+              <div>
+                <span className="text-slate-500">{wizardArea.toFixed(2)} m² · Materiais: </span>
+                <span className="font-medium text-slate-700">
+                  R$ {wizardMaterials.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+                {adjTotal !== 0 && (
+                  <span className={clsx('ml-2 font-medium', adjTotal > 0 ? 'text-red-600' : 'text-emerald-600')}>
+                    {adjTotal > 0 ? '+' : '−'}R$ {Math.abs(adjTotal).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} ajustes
+                  </span>
+                )}
+              </div>
+              <div>
+                <span className="text-slate-500">Total: </span>
+                <span className="font-bold text-navy-800 text-base">
+                  R$ {wizardTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
             </div>
             <div className="flex gap-2">
               <button onClick={() => setWizardOpen(false)} className="btn-secondary text-sm">

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
-import { Budget, Material, Room } from '../types';
+import { Budget, Material, Room, BudgetAdjustment } from '../types';
 import {
   ArrowLeft, Download, CheckCircle2, XCircle, FileSpreadsheet, FileText,
-  Loader2, Pencil, Trash2, Check, X, Plus, Save,
+  Loader2, Pencil, Trash2, Check, X, Plus, Save, UserCheck, Tag,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -49,6 +49,10 @@ export default function BudgetDetailPage() {
   // costs edit
   const [editCosts, setEditCosts]   = useState(false);
   const [costsForm, setCostsForm]   = useState({ laborCost: '0', extraCost: '0', discount: '0', notes: '', validUntil: '' });
+
+  // adjustment add form
+  const [addingAdj, setAddingAdj] = useState(false);
+  const [adjForm,   setAdjForm  ] = useState({ description: '', type: 'COST', valueType: 'FIXED', value: '' });
 
   const load = () => {
     if (!id) return;
@@ -198,6 +202,35 @@ export default function BudgetDetailPage() {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
 
+  // ── adjustments ───────────────────────────────────────────────────────────
+
+  const saveAdj = async () => {
+    if (!adjForm.description.trim()) { alert('Informe a descrição'); return; }
+    setSaving(true);
+    try {
+      const res = await api.post(`/budgets/${id}/adjustments`, {
+        description: adjForm.description,
+        type:        adjForm.type,
+        valueType:   adjForm.valueType,
+        value:       parseFloat(adjForm.value) || 0,
+      });
+      setBudget(res.data.data);
+      setAddingAdj(false);
+      setAdjForm({ description: '', type: 'COST', valueType: 'FIXED', value: '' });
+    } catch { alert('Erro ao adicionar ajuste'); }
+    finally { setSaving(false); }
+  };
+
+  const deleteAdj = async (adjId: string) => {
+    if (!confirm('Remover este ajuste?')) return;
+    setSaving(true);
+    try {
+      await api.delete(`/budgets/${id}/adjustments/${adjId}`);
+      load();
+    } catch { alert('Erro ao remover ajuste'); }
+    finally { setSaving(false); }
+  };
+
   // ── loaders ────────────────────────────────────────────────────────────────
 
   if (loading) return (
@@ -230,6 +263,11 @@ export default function BudgetDetailPage() {
           <p className="text-slate-500 text-sm">
             {budget.project?.name}
             {budget.project?.clientName && <> · {budget.project.clientName}</>}
+            {budget.seller && (
+              <span className="ml-2 inline-flex items-center gap-1 text-xs bg-navy-50 text-navy-700 px-2 py-0.5 rounded-full">
+                <UserCheck size={10} /> {budget.seller.name}
+              </span>
+            )}
           </p>
         </div>
         <span className={clsx('text-sm', STATUS_MAP[budget.status]?.cls ?? 'badge-gray')}>
@@ -526,6 +564,65 @@ export default function BudgetDetailPage() {
               <div className="flex justify-between text-sm text-red-600">
                 <span>Desconto</span>
                 <span className="font-medium">−R$ {fmt(budget.discount)}</span>
+              </div>
+            )}
+            {/* Adjustments */}
+            {(budget.adjustments ?? []).map(adj => {
+              const base = materialsCost;
+              const v = adj.valueType === 'PERCENT' ? base * adj.value / 100 : adj.value;
+              const isDiscount = adj.type === 'DISCOUNT';
+              return (
+                <div key={adj.id} className={clsx('flex justify-between text-sm', isDiscount ? 'text-emerald-600' : 'text-orange-600')}>
+                  <div className="flex items-center gap-1.5">
+                    <Tag size={11} />
+                    <span>{adj.description}</span>
+                    <span className="text-xs opacity-60">
+                      ({adj.valueType === 'PERCENT' ? `${adj.value}%` : 'fixo'})
+                    </span>
+                    {canEdit && (
+                      <button onClick={() => deleteAdj(adj.id)} className="opacity-40 hover:opacity-100 transition-opacity">
+                        <X size={11} />
+                      </button>
+                    )}
+                  </div>
+                  <span className="font-medium">{isDiscount ? '−' : '+'}R$ {fmt(v)}</span>
+                </div>
+              );
+            })}
+            {/* Add adjustment row */}
+            {canEdit && !addingAdj && (
+              <button onClick={() => setAddingAdj(true)}
+                className="flex items-center gap-1 text-xs text-navy-600 hover:text-navy-800 transition-colors py-1">
+                <Plus size={12} /> Adicionar custo / desconto
+              </button>
+            )}
+            {addingAdj && canEdit && (
+              <div className="border border-slate-200 rounded-lg p-3 space-y-2 bg-slate-50">
+                <input className="input text-sm" placeholder="Descrição *"
+                  value={adjForm.description}
+                  onChange={e => setAdjForm(f => ({ ...f, description: e.target.value }))} />
+                <div className="grid grid-cols-3 gap-2">
+                  <select className="input text-sm" value={adjForm.type}
+                    onChange={e => setAdjForm(f => ({ ...f, type: e.target.value }))}>
+                    <option value="COST">Custo (+)</option>
+                    <option value="DISCOUNT">Desconto (−)</option>
+                  </select>
+                  <select className="input text-sm" value={adjForm.valueType}
+                    onChange={e => setAdjForm(f => ({ ...f, valueType: e.target.value }))}>
+                    <option value="FIXED">R$ Fixo</option>
+                    <option value="PERCENT">% Mat.</option>
+                  </select>
+                  <input className="input text-sm" type="number" step="0.01" min="0"
+                    placeholder={adjForm.valueType === 'PERCENT' ? '%' : 'R$'}
+                    value={adjForm.value}
+                    onChange={e => setAdjForm(f => ({ ...f, value: e.target.value }))} />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setAddingAdj(false)} className="btn-secondary text-xs py-1"><X size={12} /> Cancelar</button>
+                  <button onClick={saveAdj} disabled={saving} className="btn-primary text-xs py-1">
+                    {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Adicionar
+                  </button>
+                </div>
               </div>
             )}
             <div className="border-t border-slate-200 pt-2 flex justify-between">

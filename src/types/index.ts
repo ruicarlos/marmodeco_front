@@ -83,12 +83,36 @@ export interface Material {
   createdAt: string;
 }
 
+export interface Seller {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  commission: number;
+  active: boolean;
+  companyId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BudgetAdjustment {
+  id: string;
+  budgetId: string;
+  description: string;
+  type: 'COST' | 'DISCOUNT';
+  valueType: 'FIXED' | 'PERCENT';
+  value: number;
+  createdAt: string;
+}
+
 export interface Budget {
   id: string;
   projectId: string;
   project?: { id: string; name: string; clientName?: string; clientEmail?: string };
   userId: string;
   user?: { id: string; name: string; email: string };
+  sellerId?: string;
+  seller?: Seller;
   name: string;
   status: 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED';
   totalArea: number;
@@ -100,6 +124,7 @@ export interface Budget {
   validUntil?: string;
   approvedAt?: string;
   items?: BudgetItem[];
+  adjustments?: BudgetAdjustment[];
   _count?: { items: number };
   createdAt: string;
   updatedAt: string;
