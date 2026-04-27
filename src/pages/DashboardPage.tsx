@@ -4,7 +4,7 @@ import api from '../services/api';
 import { DashboardStats } from '../types';
 import {
   FolderOpen, FileText, Package, TrendingUp,
-  AreaChart, Clock, CheckCircle2, AlertCircle, ArrowRight
+  AreaChart, Clock, CheckCircle2, ArrowRight
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { format } from 'date-fns';
@@ -212,19 +212,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Info banner */}
-      <div className="card p-5 bg-gradient-to-r from-navy-50 to-slate-50 border-navy-200">
-        <div className="flex items-start gap-3">
-          <AlertCircle size={18} className="text-navy-600 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-slate-800">MarmoDecor – Fase de Desenvolvimento</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Sistema em desenvolvimento ativo. Inteligência Artificial para detecção automática de áreas CAD/2D será integrada na próxima fase (TRL 7→8).
-              Projeto BNDES B+P Smart Factory — SENAI/CE × BMAAR Propriedades.
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
