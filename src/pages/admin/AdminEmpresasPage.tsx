@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import api from '../../services/api';
-import { Company, SubscriptionPlan } from '../../types';
+import { Company, SubscriptionPlan, KPIRecord } from '../../types';
 import {
   Plus, X, Loader2, Search, Eye, Pencil,
   DollarSign, Ban, KeyRound, Download, ChevronDown,
-  Building2, CheckCircle, AlertCircle, Check
+  Building2, CheckCircle, AlertCircle, Check,
+  TrendingUp, Gauge, Trash2, ChevronUp
 } from 'lucide-react';
 import clsx from 'clsx';
 import { format, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 /* ─── Types ─── */
 type Tab = 'cadastro' | 'uso';
@@ -85,7 +87,282 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error';
 }
 
 /* ─── View Modal ─── */
+/* ─── KPI helpers ─── */
+function oeeColor(v: number) {
+  if (v >= 85) return 'text-emerald-600';
+  if (v >= 60) return 'text-amber-600';
+  return 'text-red-500';
+}
+function prodColor(v: number) {
+  if (v >= 1) return 'text-emerald-600';
+  if (v >= 0.5) return 'text-amber-600';
+  return 'text-red-500';
+}
+
+/* ─── KPI Forms ─── */
+function ProdForm({ companyId, onSaved, onClose }: { companyId: string; onSaved: () => void; onClose: () => void }) {
+  const [form, setForm] = useState({ period: '', unidadesProduzidas: '', horasTrabalhadas: '', numOperadores: '1', notes: '' });
+  const [loading, setLoading] = useState(false);
+  const preview = () => {
+    const u = parseFloat(form.unidadesProduzidas) || 0;
+    const h = parseFloat(form.horasTrabalhadas) || 0;
+    const n = parseInt(form.numOperadores) || 1;
+    return h > 0 ? (u / (h * n)).toFixed(3) : '—';
+  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true);
+    try { await api.post('/kpis', { type: 'PRODUTIVIDADE', companyId, ...form }); onSaved(); onClose(); }
+    catch (err: unknown) { alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro'); }
+    finally { setLoading(false); }
+  };
+  return (
+    <form onSubmit={handleSubmit} className="bg-navy-50 border border-navy-100 rounded-xl p-4 space-y-3 mt-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-navy-700 uppercase tracking-wide">Novo registro — Produtividade</p>
+        <button type="button" onClick={onClose}><X size={13} className="text-slate-400" /></button>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="col-span-2"><label className="label text-xs">Período *</label>
+          <input className="input text-sm" type="month" required value={form.period} onChange={e => setForm(f => ({ ...f, period: e.target.value + '-01' }))} /></div>
+        <div><label className="label text-xs">Unidades (m²) *</label>
+          <input className="input text-sm" type="number" step="0.01" required value={form.unidadesProduzidas} onChange={e => setForm(f => ({ ...f, unidadesProduzidas: e.target.value }))} placeholder="Ex: 120" /></div>
+        <div><label className="label text-xs">Horas trabalhadas *</label>
+          <input className="input text-sm" type="number" step="0.1" required value={form.horasTrabalhadas} onChange={e => setForm(f => ({ ...f, horasTrabalhadas: e.target.value }))} placeholder="Ex: 160" /></div>
+        <div><label className="label text-xs">Nº operadores *</label>
+          <input className="input text-sm" type="number" min="1" required value={form.numOperadores} onChange={e => setForm(f => ({ ...f, numOperadores: e.target.value }))} /></div>
+        <div className="flex items-end pb-1"><p className="text-xs text-slate-500">Prévia: <span className="font-bold text-navy-700">{preview()} m²/h·op</span></p></div>
+        <div className="col-span-2"><label className="label text-xs">Observações</label>
+          <input className="input text-sm" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Opcional" /></div>
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
+        <button type="submit" className="btn-primary text-xs" disabled={loading}>{loading && <Loader2 size={12} className="animate-spin" />} Salvar</button>
+      </div>
+    </form>
+  );
+}
+
+function OEEFormComp({ companyId, onSaved, onClose }: { companyId: string; onSaved: () => void; onClose: () => void }) {
+  const [form, setForm] = useState({ period: '', disponibilidade: '', desempenho: '', qualidade: '', notes: '' });
+  const [loading, setLoading] = useState(false);
+  const preview = () => {
+    const d = parseFloat(form.disponibilidade) || 0;
+    const p = parseFloat(form.desempenho) || 0;
+    const q = parseFloat(form.qualidade) || 0;
+    return ((d / 100) * (p / 100) * (q / 100) * 100).toFixed(1);
+  };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true);
+    try { await api.post('/kpis', { type: 'OEE', companyId, ...form }); onSaved(); onClose(); }
+    catch (err: unknown) { alert((err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro'); }
+    finally { setLoading(false); }
+  };
+  return (
+    <form onSubmit={handleSubmit} className="bg-navy-50 border border-navy-100 rounded-xl p-4 space-y-3 mt-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-navy-700 uppercase tracking-wide">Novo registro — OEE</p>
+        <button type="button" onClick={onClose}><X size={13} className="text-slate-400" /></button>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="col-span-2"><label className="label text-xs">Período *</label>
+          <input className="input text-sm" type="month" required value={form.period} onChange={e => setForm(f => ({ ...f, period: e.target.value + '-01' }))} /></div>
+        <div><label className="label text-xs">Disponibilidade (%) *</label>
+          <input className="input text-sm" type="number" step="0.1" min="0" max="100" required value={form.disponibilidade} onChange={e => setForm(f => ({ ...f, disponibilidade: e.target.value }))} placeholder="Ex: 95" /></div>
+        <div><label className="label text-xs">Desempenho (%) *</label>
+          <input className="input text-sm" type="number" step="0.1" min="0" max="100" required value={form.desempenho} onChange={e => setForm(f => ({ ...f, desempenho: e.target.value }))} placeholder="Ex: 88" /></div>
+        <div><label className="label text-xs">Qualidade (%) *</label>
+          <input className="input text-sm" type="number" step="0.1" min="0" max="100" required value={form.qualidade} onChange={e => setForm(f => ({ ...f, qualidade: e.target.value }))} placeholder="Ex: 97" /></div>
+        <div className="flex items-end pb-1"><p className="text-xs text-slate-500">OEE prévia: <span className="font-bold text-navy-700">{preview()}%</span></p></div>
+        <div className="col-span-2"><label className="label text-xs">Observações</label>
+          <input className="input text-sm" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Opcional" /></div>
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
+        <button type="submit" className="btn-primary text-xs" disabled={loading}>{loading && <Loader2 size={12} className="animate-spin" />} Salvar</button>
+      </div>
+    </form>
+  );
+}
+
+/* ─── Indicadores Tab content ─── */
+function IndicadoresTab({ company }: { company: Company }) {
+  const [records, setRecords] = useState<KPIRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showProdForm, setShowProdForm] = useState(false);
+  const [showOEEForm, setShowOEEForm] = useState(false);
+  const [showProdHist, setShowProdHist] = useState(false);
+  const [showOEEHist, setShowOEEHist] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    api.get(`/kpis?companyId=${company.id}`).then(r => setRecords(r.data.data)).finally(() => setLoading(false));
+  };
+  useEffect(load, [company.id]);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Excluir este registro?')) return;
+    await api.delete(`/kpis/${id}`);
+    load();
+  };
+
+  const prodRecords = records.filter(r => r.type === 'PRODUTIVIDADE').sort((a, b) => new Date(a.period).getTime() - new Date(b.period).getTime());
+  const oeeRecords  = records.filter(r => r.type === 'OEE').sort((a, b) => new Date(a.period).getTime() - new Date(b.period).getTime());
+  const latestProd = prodRecords.at(-1);
+  const latestOEE  = oeeRecords.at(-1);
+
+  if (loading) return <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-navy-600" /></div>;
+
+  return (
+    <div className="space-y-5">
+      {/* Produtividade */}
+      <div className="border border-slate-200 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={15} className="text-blue-600" />
+            <span className="text-sm font-semibold text-slate-700">Produtividade</span>
+            <span className="text-xs text-slate-400">m²/hora·operador</span>
+          </div>
+          <button onClick={() => { setShowProdForm(v => !v); setShowOEEForm(false); }} className="btn-primary text-xs px-3 py-1">
+            <Plus size={12} /> Registrar
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          {showProdForm && <ProdForm companyId={company.id} onSaved={load} onClose={() => setShowProdForm(false)} />}
+          <div className="flex items-center gap-4">
+            <div>
+              <p className="text-xs text-slate-400">Último resultado</p>
+              <p className={`text-2xl font-bold ${latestProd ? prodColor(latestProd.resultado) : 'text-slate-300'}`}>
+                {latestProd ? latestProd.resultado.toFixed(3) : '—'}
+              </p>
+            </div>
+            {latestProd && (
+              <div className="flex-1 text-xs text-slate-500 bg-slate-50 rounded-lg p-2 space-y-1">
+                <div className="flex justify-between"><span>Unidades</span><span className="font-medium">{latestProd.unidadesProduzidas} m²</span></div>
+                <div className="flex justify-between"><span>Horas</span><span className="font-medium">{latestProd.horasTrabalhadas} h</span></div>
+                <div className="flex justify-between"><span>Operadores</span><span className="font-medium">{latestProd.numOperadores}</span></div>
+                <div className="flex justify-between"><span>Período</span><span className="font-medium">{format(new Date(latestProd.period), 'MMM yyyy', { locale: ptBR })}</span></div>
+              </div>
+            )}
+          </div>
+          {prodRecords.length > 1 && (
+            <ResponsiveContainer width="100%" height={100}>
+              <LineChart data={prodRecords.map(r => ({ period: format(new Date(r.period), 'MMM/yy', { locale: ptBR }), valor: r.resultado }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="period" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} />
+                <Tooltip formatter={(v: number) => [v.toFixed(3), 'm²/h·op']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                <Line type="monotone" dataKey="valor" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+          {prodRecords.length > 0 && (
+            <>
+              <button onClick={() => setShowProdHist(v => !v)} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700">
+                {showProdHist ? <ChevronUp size={12} /> : <ChevronDown size={12} />} {showProdHist ? 'Ocultar' : 'Ver'} histórico ({prodRecords.length})
+              </button>
+              {showProdHist && (
+                <table className="w-full text-xs"><thead><tr className="border-b border-slate-100">
+                  <th className="text-left py-1 text-slate-400">Período</th><th className="text-right py-1 text-slate-400">Unid.</th>
+                  <th className="text-right py-1 text-slate-400">Horas</th><th className="text-right py-1 text-slate-400">Op.</th>
+                  <th className="text-right py-1 text-slate-400">Resultado</th><th className="w-6"></th>
+                </tr></thead><tbody>
+                  {[...prodRecords].reverse().map(r => (
+                    <tr key={r.id} className="border-b border-slate-50">
+                      <td className="py-1">{format(new Date(r.period), 'MMM yyyy', { locale: ptBR })}</td>
+                      <td className="py-1 text-right">{r.unidadesProduzidas}</td><td className="py-1 text-right">{r.horasTrabalhadas}</td>
+                      <td className="py-1 text-right">{r.numOperadores}</td>
+                      <td className={`py-1 text-right font-semibold ${prodColor(r.resultado)}`}>{r.resultado.toFixed(3)}</td>
+                      <td className="py-1 text-right"><button onClick={() => handleDelete(r.id)} className="text-red-400 hover:text-red-600"><Trash2 size={11} /></button></td>
+                    </tr>
+                  ))}
+                </tbody></table>
+              )}
+            </>
+          )}
+          {prodRecords.length === 0 && !showProdForm && <p className="text-center text-slate-400 text-xs py-2">Nenhum registro de produtividade.</p>}
+        </div>
+      </div>
+
+      {/* OEE */}
+      <div className="border border-slate-200 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <Gauge size={15} className="text-purple-600" />
+            <span className="text-sm font-semibold text-slate-700">Eficiência Global (OEE)</span>
+            <span className="text-xs text-slate-400">Disp. × Desemp. × Qualid.</span>
+          </div>
+          <button onClick={() => { setShowOEEForm(v => !v); setShowProdForm(false); }} className="btn-primary text-xs px-3 py-1">
+            <Plus size={12} /> Registrar
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          {showOEEForm && <OEEFormComp companyId={company.id} onSaved={load} onClose={() => setShowOEEForm(false)} />}
+          <div className="flex items-center gap-4">
+            <div>
+              <p className="text-xs text-slate-400">Último resultado</p>
+              <p className={`text-2xl font-bold ${latestOEE ? oeeColor(latestOEE.resultado) : 'text-slate-300'}`}>
+                {latestOEE ? `${latestOEE.resultado.toFixed(1)}%` : '—'}
+              </p>
+            </div>
+            {latestOEE && (
+              <div className="flex-1 text-xs text-slate-500 bg-slate-50 rounded-lg p-2 space-y-1">
+                <div className="flex justify-between"><span>Disponibilidade</span><span className="font-medium">{latestOEE.disponibilidade}%</span></div>
+                <div className="flex justify-between"><span>Desempenho</span><span className="font-medium">{latestOEE.desempenho}%</span></div>
+                <div className="flex justify-between"><span>Qualidade</span><span className="font-medium">{latestOEE.qualidade}%</span></div>
+                <div className="flex justify-between"><span>Período</span><span className="font-medium">{format(new Date(latestOEE.period), 'MMM yyyy', { locale: ptBR })}</span></div>
+              </div>
+            )}
+          </div>
+          <div className="bg-purple-50 rounded-lg px-3 py-2 text-xs text-purple-900 flex gap-4">
+            <span className="text-emerald-700 font-medium">≥ 85% World Class</span>
+            <span className="text-amber-700 font-medium">60–85% Bom</span>
+            <span className="text-red-600 font-medium">&lt; 60% Atenção</span>
+          </div>
+          {oeeRecords.length > 1 && (
+            <ResponsiveContainer width="100%" height={100}>
+              <LineChart data={oeeRecords.map(r => ({ period: format(new Date(r.period), 'MMM/yy', { locale: ptBR }), valor: r.resultado }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="period" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} unit="%" />
+                <Tooltip formatter={(v: number) => [`${v.toFixed(1)}%`, 'OEE']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                <Line type="monotone" dataKey="valor" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+          {oeeRecords.length > 0 && (
+            <>
+              <button onClick={() => setShowOEEHist(v => !v)} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700">
+                {showOEEHist ? <ChevronUp size={12} /> : <ChevronDown size={12} />} {showOEEHist ? 'Ocultar' : 'Ver'} histórico ({oeeRecords.length})
+              </button>
+              {showOEEHist && (
+                <table className="w-full text-xs"><thead><tr className="border-b border-slate-100">
+                  <th className="text-left py-1 text-slate-400">Período</th><th className="text-right py-1 text-slate-400">Disp.</th>
+                  <th className="text-right py-1 text-slate-400">Desemp.</th><th className="text-right py-1 text-slate-400">Qualid.</th>
+                  <th className="text-right py-1 text-slate-400">OEE</th><th className="w-6"></th>
+                </tr></thead><tbody>
+                  {[...oeeRecords].reverse().map(r => (
+                    <tr key={r.id} className="border-b border-slate-50">
+                      <td className="py-1">{format(new Date(r.period), 'MMM yyyy', { locale: ptBR })}</td>
+                      <td className="py-1 text-right">{r.disponibilidade}%</td><td className="py-1 text-right">{r.desempenho}%</td>
+                      <td className="py-1 text-right">{r.qualidade}%</td>
+                      <td className={`py-1 text-right font-semibold ${oeeColor(r.resultado)}`}>{r.resultado.toFixed(1)}%</td>
+                      <td className="py-1 text-right"><button onClick={() => handleDelete(r.id)} className="text-red-400 hover:text-red-600"><Trash2 size={11} /></button></td>
+                    </tr>
+                  ))}
+                </tbody></table>
+              )}
+            </>
+          )}
+          {oeeRecords.length === 0 && !showOEEForm && <p className="text-center text-slate-400 text-xs py-2">Nenhum registro de OEE.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── View Modal ─── */
 function ViewModal({ company, onClose }: { company: Company; onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<'detalhes' | 'indicadores'>('detalhes');
   const fields = [
     { label: 'CNPJ', value: company.cnpj || '—' },
     { label: 'RESPONSÁVEL', value: getResponsavel(company) },
@@ -96,29 +373,50 @@ function ViewModal({ company, onClose }: { company: Company; onClose: () => void
   ];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           <div>
             <h2 className="font-semibold text-slate-800">{company.name}</h2>
             <p className="text-xs text-slate-400">Detalhes da empresa</p>
           </div>
           <button onClick={onClose}><X size={18} className="text-slate-400" /></button>
         </div>
-        <div className="p-6 grid grid-cols-2 gap-3">
-          {fields.map(f => (
-            <div key={f.label} className="border border-slate-200 border-l-4 border-l-navy-700 p-3 rounded-r-lg">
-              <div className="text-xs text-slate-400 uppercase tracking-wide mb-1">{f.label}</div>
-              <div className="font-semibold text-slate-800 text-sm">{f.value}</div>
-            </div>
+        {/* Tabs */}
+        <div className="flex border-b px-6 shrink-0">
+          {(['detalhes', 'indicadores'] as const).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className={clsx('px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors capitalize',
+                activeTab === tab ? 'border-navy-700 text-navy-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+              )}>
+              {tab === 'detalhes' ? 'Detalhes' : 'Indicadores'}
+            </button>
           ))}
         </div>
-        {company.address && (
-          <div className="px-6 pb-4">
-            <div className="text-xs text-slate-400 uppercase tracking-wide mb-1">ENDEREÇO</div>
-            <div className="text-sm text-slate-600">{company.address}</div>
-          </div>
-        )}
-        <div className="flex justify-end px-6 pb-5">
+        {/* Content */}
+        <div className="overflow-y-auto flex-1 p-6">
+          {activeTab === 'detalhes' ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                {fields.map(f => (
+                  <div key={f.label} className="border border-slate-200 border-l-4 border-l-navy-700 p-3 rounded-r-lg">
+                    <div className="text-xs text-slate-400 uppercase tracking-wide mb-1">{f.label}</div>
+                    <div className="font-semibold text-slate-800 text-sm">{f.value}</div>
+                  </div>
+                ))}
+              </div>
+              {company.address && (
+                <div className="mt-4">
+                  <div className="text-xs text-slate-400 uppercase tracking-wide mb-1">ENDEREÇO</div>
+                  <div className="text-sm text-slate-600">{company.address}</div>
+                </div>
+              )}
+            </>
+          ) : (
+            <IndicadoresTab company={company} />
+          )}
+        </div>
+        <div className="flex justify-end px-6 pb-5 shrink-0">
           <button onClick={onClose} className="btn-secondary text-sm">Fechar</button>
         </div>
       </div>

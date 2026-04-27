@@ -18,7 +18,6 @@ const gestorNavItems = [
   { to: '/projetos', icon: FolderOpen, label: 'Projetos', end: false },
   { to: '/orcamentos', icon: FileText, label: 'Orçamentos', end: false },
   { to: '/materiais', icon: Package, label: 'Materiais', end: false },
-  { to: '/indicadores', icon: Gauge, label: 'Indicadores', end: false },
   { to: '/relatorios', icon: BarChart3, label: 'Relatórios', end: false },
 ];
 

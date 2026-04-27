@@ -51,7 +51,6 @@ function AppRoutes() {
         <Route path="/orcamentos" element={<BudgetsPage />} />
         <Route path="/orcamentos/:id" element={<BudgetDetailPage />} />
         <Route path="/materiais" element={<MaterialsPage />} />
-        <Route path="/indicadores" element={<IndicadoresPage />} />
         <Route path="/relatorios" element={<ReportsPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
       </Route>
