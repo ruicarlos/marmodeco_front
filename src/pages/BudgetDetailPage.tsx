@@ -168,6 +168,36 @@ export default function BudgetDetailPage() {
     load();
   };
 
+  // ── downloads ──────────────────────────────────────────────────────────────
+
+  const downloadBlob = async (url: string, filename: string, mime: string) => {
+    setSaving(true);
+    try {
+      const res = await api.get(url, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: mime });
+      const link = document.createElement('a');
+      link.href     = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch { alert('Erro ao baixar arquivo'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDownloadPDF = () =>
+    downloadBlob(
+      `/reports/budgets/${id}/pdf`,
+      `orcamento-${budget?.name?.replace(/\s+/g, '_') ?? id}.pdf`,
+      'application/pdf',
+    );
+
+  const handleDownloadExcel = () =>
+    downloadBlob(
+      `/reports/budgets/${id}/excel`,
+      `orcamento-${budget?.name?.replace(/\s+/g, '_') ?? id}.xlsx`,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+
   // ── loaders ────────────────────────────────────────────────────────────────
 
   if (loading) return (
@@ -209,10 +239,11 @@ export default function BudgetDetailPage() {
 
       {/* ── Action bar ── */}
       <div className="flex flex-wrap gap-2">
-        <button onClick={() => window.open(`/api/reports/budgets/${id}/pdf`, '_blank')} className="btn-secondary text-xs">
-          <FileText size={13} className="text-red-500" /> PDF
+        <button onClick={handleDownloadPDF} disabled={saving} className="btn-secondary text-xs">
+          <FileText size={13} className="text-red-500" />
+          {saving ? 'Gerando…' : 'Baixar PDF'}
         </button>
-        <button onClick={() => window.open(`/api/reports/budgets/${id}/excel`, '_blank')} className="btn-secondary text-xs">
+        <button onClick={handleDownloadExcel} disabled={saving} className="btn-secondary text-xs">
           <FileSpreadsheet size={13} className="text-emerald-600" /> Excel
         </button>
         {budget.status === 'DRAFT' && (
