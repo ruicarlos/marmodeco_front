@@ -15,6 +15,13 @@ const STATUS_OPTIONS = [
   { value: 'CANCELLED', label: 'Cancelado' },
 ];
 
+const PROJECT_TYPE_OPTIONS = [
+  { value: 'RESIDENCIAL', label: 'Residencial' },
+  { value: 'COMERCIAL', label: 'Comercial' },
+  { value: 'INDUSTRIAL', label: 'Industrial' },
+  { value: 'OUTRO', label: 'Outro' },
+];
+
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [project, setProject] = useState<Project | null>(null);
@@ -25,6 +32,8 @@ export default function ProjectDetailPage() {
   const [exportingDXF, setExportingDXF] = useState(false);
   const [editingStatus, setEditingStatus] = useState(false);
   const [newStatus, setNewStatus] = useState('');
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsForm, setDetailsForm] = useState({ projectType: '', deadline: '' });
   const [addingRoom, setAddingRoom] = useState(false);
   const [roomForm, setRoomForm] = useState({ name: '', area: '', perimeter: '', notes: '' });
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
@@ -34,8 +43,13 @@ export default function ProjectDetailPage() {
     if (!id) return;
     setLoading(true);
     api.get(`/projects/${id}`).then(res => {
-      setProject(res.data.data);
-      setNewStatus(res.data.data.status);
+      const p = res.data.data;
+      setProject(p);
+      setNewStatus(p.status);
+      setDetailsForm({
+        projectType: p.projectType || '',
+        deadline: p.deadline ? p.deadline.substring(0, 10) : '',
+      });
     }).finally(() => setLoading(false));
   };
 
@@ -64,6 +78,15 @@ export default function ProjectDetailPage() {
   const handleStatusSave = async () => {
     await api.put(`/projects/${id}`, { status: newStatus });
     setEditingStatus(false);
+    load();
+  };
+
+  const handleDetailsSave = async () => {
+    await api.put(`/projects/${id}`, {
+      projectType: detailsForm.projectType || null,
+      deadline: detailsForm.deadline ? new Date(detailsForm.deadline).toISOString() : null,
+    });
+    setEditingDetails(false);
     load();
   };
 
@@ -165,33 +188,71 @@ export default function ProjectDetailPage() {
         <div className="lg:col-span-1 space-y-4">
           {/* Info Card */}
           <div className="card p-5">
-            <h3 className="font-semibold text-slate-700 text-sm mb-3">Informações</h3>
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-slate-500">Status</dt>
-                <dd className="font-medium text-slate-800">{STATUS_OPTIONS.find(s => s.value === project.status)?.label}</dd>
-              </div>
-              {project.clientEmail && (
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">E-mail</dt>
-                  <dd className="font-medium text-slate-800 truncate max-w-[140px]">{project.clientEmail}</dd>
-                </div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-slate-700 text-sm">Informações</h3>
+              {!editingDetails && (
+                <button onClick={() => setEditingDetails(true)} className="btn-ghost p-1 text-slate-400 hover:text-slate-700"><Edit2 size={13} /></button>
               )}
-              {project.clientPhone && (
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">Telefone</dt>
-                  <dd className="font-medium text-slate-800">{project.clientPhone}</dd>
+            </div>
+
+            {editingDetails ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="label text-xs">Tipo do projeto</label>
+                  <select className="input text-sm" value={detailsForm.projectType} onChange={e => setDetailsForm(f => ({ ...f, projectType: e.target.value }))}>
+                    <option value="">— Selecione —</option>
+                    {PROJECT_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
                 </div>
-              )}
-              <div className="flex justify-between">
-                <dt className="text-slate-500">Ambientes</dt>
-                <dd className="font-medium text-slate-800">{project.rooms?.length ?? 0}</dd>
+                <div>
+                  <label className="label text-xs">Prazo de entrega</label>
+                  <input className="input text-sm" type="date" value={detailsForm.deadline} onChange={e => setDetailsForm(f => ({ ...f, deadline: e.target.value }))} />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={handleDetailsSave} className="btn-primary text-xs py-1.5 px-3"><Save size={12} /> Salvar</button>
+                  <button onClick={() => setEditingDetails(false)} className="btn-secondary text-xs py-1.5 px-3"><X size={12} /> Cancelar</button>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-slate-500">Área total</dt>
-                <dd className="font-medium text-slate-800">{totalArea.toFixed(2)} m²</dd>
-              </div>
-            </dl>
+            ) : (
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Status</dt>
+                  <dd className="font-medium text-slate-800">{STATUS_OPTIONS.find(s => s.value === project.status)?.label}</dd>
+                </div>
+                {project.projectType && (
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">Tipo</dt>
+                    <dd className="font-medium text-slate-800">{PROJECT_TYPE_OPTIONS.find(t => t.value === project.projectType)?.label}</dd>
+                  </div>
+                )}
+                {project.deadline && (
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">Prazo</dt>
+                    <dd className="font-medium text-slate-800">{new Date(project.deadline).toLocaleDateString('pt-BR')}</dd>
+                  </div>
+                )}
+                {project.clientEmail && (
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">E-mail</dt>
+                    <dd className="font-medium text-slate-800 truncate max-w-[140px]">{project.clientEmail}</dd>
+                  </div>
+                )}
+                {project.clientPhone && (
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">Telefone</dt>
+                    <dd className="font-medium text-slate-800">{project.clientPhone}</dd>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Ambientes</dt>
+                  <dd className="font-medium text-slate-800">{project.rooms?.length ?? 0}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Área total</dt>
+                  <dd className="font-medium text-slate-800">{totalArea.toFixed(2)} m²</dd>
+                </div>
+              </dl>
+            )}
           </div>
 
           {/* Files */}

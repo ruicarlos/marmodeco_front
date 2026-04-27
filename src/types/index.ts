@@ -30,6 +30,8 @@ export interface Project {
   clientEmail?: string;
   clientPhone?: string;
   status: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  projectType?: 'RESIDENCIAL' | 'COMERCIAL' | 'INDUSTRIAL' | 'OUTRO';
+  deadline?: string;
   userId: string;
   user?: { id: string; name: string; email: string };
   companyId?: string;
@@ -151,6 +153,22 @@ export interface DashboardStats {
   recentProjects: Project[];
   recentBudgets: Budget[];
   statusCounts: { status: string; _count: number }[];
+}
+
+export interface KPIRecord {
+  id: string;
+  userId: string;
+  type: 'PRODUTIVIDADE' | 'OEE';
+  period: string;
+  unidadesProduzidas?: number;
+  horasTrabalhadas?: number;
+  numOperadores?: number;
+  disponibilidade?: number;
+  desempenho?: number;
+  qualidade?: number;
+  resultado: number;
+  notes?: string;
+  createdAt: string;
 }
 
 export interface ApiResponse<T> {

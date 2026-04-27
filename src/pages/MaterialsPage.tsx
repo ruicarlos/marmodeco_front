@@ -128,8 +128,7 @@ export default function MaterialsPage() {
 
   const load = () => {
     setLoading(true);
-    const endpoint = isAdmin ? '/materials/all' : '/materials';
-    api.get(endpoint).then(r => setMaterials(r.data.data)).finally(() => setLoading(false));
+    api.get('/materials/all').then(r => setMaterials(r.data.data)).finally(() => setLoading(false));
   };
 
   useEffect(load, [isAdmin]);
@@ -155,11 +154,9 @@ export default function MaterialsPage() {
           <h1 className="text-2xl font-bold text-slate-800">Catálogo de Materiais</h1>
           <p className="text-slate-500 text-sm mt-0.5">{materials.filter(m => m.active).length} material(is) ativo(s)</p>
         </div>
-        {isAdmin && (
-          <button onClick={() => { setEditing(undefined); setModalOpen(true); }} className="btn-primary">
-            <Plus size={16} /> Novo Material
-          </button>
-        )}
+        <button onClick={() => { setEditing(undefined); setModalOpen(true); }} className="btn-primary">
+          <Plus size={16} /> Novo Material
+        </button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -208,21 +205,19 @@ export default function MaterialsPage() {
                   </div>
                   <div className="text-xs text-slate-400">por m²</div>
                 </div>
-                {isAdmin && (
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => { setEditing(m); setModalOpen(true); }}
-                      className="btn-ghost p-1.5 text-slate-400 hover:text-slate-700"
-                    >
-                      <Pencil size={14} />
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => { setEditing(m); setModalOpen(true); }}
+                    className="btn-ghost p-1.5 text-slate-400 hover:text-slate-700"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  {m.active && (
+                    <button onClick={() => handleDeactivate(m.id)} className="btn-ghost p-1.5 text-red-400 hover:text-red-600 text-xs">
+                      Desativar
                     </button>
-                    {m.active && (
-                      <button onClick={() => handleDeactivate(m.id)} className="btn-ghost p-1.5 text-red-400 hover:text-red-600 text-xs">
-                        Desativar
-                      </button>
-                    )}
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               {m.supplier && <p className="text-xs text-slate-400 mt-2 border-t border-slate-100 pt-2">Fornecedor: {m.supplier}</p>}

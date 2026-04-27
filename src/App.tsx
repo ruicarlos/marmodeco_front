@@ -9,6 +9,7 @@ import BudgetsPage from './pages/BudgetsPage';
 import BudgetDetailPage from './pages/BudgetDetailPage';
 import MaterialsPage from './pages/MaterialsPage';
 import ReportsPage from './pages/ReportsPage';
+import IndicadoresPage from './pages/IndicadoresPage';
 import ProfilePage from './pages/ProfilePage';
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import AdminEmpresasPage from './pages/admin/AdminEmpresasPage';
@@ -50,6 +51,7 @@ function AppRoutes() {
         <Route path="/orcamentos" element={<BudgetsPage />} />
         <Route path="/orcamentos/:id" element={<BudgetDetailPage />} />
         <Route path="/materiais" element={<MaterialsPage />} />
+        <Route path="/indicadores" element={<IndicadoresPage />} />
         <Route path="/relatorios" element={<ReportsPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
       </Route>

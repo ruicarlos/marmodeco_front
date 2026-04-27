@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, FolderOpen, FileText, Package,
   BarChart3, X, ChevronRight, Building2, CreditCard,
-  Activity, Settings, DollarSign
+  Activity, Settings, DollarSign, Gauge
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import clsx from 'clsx';
@@ -18,6 +18,7 @@ const gestorNavItems = [
   { to: '/projetos', icon: FolderOpen, label: 'Projetos', end: false },
   { to: '/orcamentos', icon: FileText, label: 'Orçamentos', end: false },
   { to: '/materiais', icon: Package, label: 'Materiais', end: false },
+  { to: '/indicadores', icon: Gauge, label: 'Indicadores', end: false },
   { to: '/relatorios', icon: BarChart3, label: 'Relatórios', end: false },
 ];
 
