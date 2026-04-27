@@ -1,22 +1,22 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
-import { Sale, FinancialEntry } from '../types';
+import { Sale, FinancialEntry, StockItem } from '../types';
 import {
   BarChart3, TrendingUp, FileText, CheckCircle2, Clock,
   Users, DollarSign, CreditCard, Banknote, Smartphone,
-  Plus, Pencil, Trash2, X, Save, Loader2, AlertCircle,
-  ChevronUp, ArrowRight,
+  Plus, Trash2, X, Save, Loader2, AlertCircle,
+  ChevronUp, ArrowRight, Package, AlertTriangle, Calendar,
 } from 'lucide-react';
 import clsx from 'clsx';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, LineChart, Line, CartesianGrid,
+  PieChart, Pie, Cell, Legend, CartesianGrid,
 } from 'recharts';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 function brl(n: number) {
   return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 }
@@ -24,21 +24,31 @@ function fmtMonth(m: string) {
   const [y, mo] = m.split('-');
   return format(new Date(Number(y), Number(mo) - 1, 1), 'MMM/yy', { locale: ptBR });
 }
+function toDateStr(d: Date) { return d.toISOString().substring(0, 10); }
 
 // ── constants ─────────────────────────────────────────────────────────────────
 const TABS = [
-  { key: 'overview',   label: 'Visão Geral'  },
-  { key: 'clients',    label: 'Por Cliente'  },
-  { key: 'pipeline',   label: 'Pipeline'     },
-  { key: 'abc',        label: 'Curva ABC'    },
-  { key: 'financial',  label: 'Financeiro'   },
+  { key: 'overview',  label: 'Visão Geral' },
+  { key: 'clients',   label: 'Por Cliente' },
+  { key: 'pipeline',  label: 'Pipeline'    },
+  { key: 'abc',       label: 'Curva ABC'   },
+  { key: 'stock',     label: 'Estoque'     },
+  { key: 'financial', label: 'Financeiro'  },
 ] as const;
 type Tab = typeof TABS[number]['key'];
 
-const PAY_LABEL: Record<string, string> = {
-  CARD: 'Cartão', PIX: 'Pix', CASH: 'Dinheiro', MIXED: 'Misto',
-};
-const PAY_ICON: Record<string, React.ReactNode> = {
+const PRESETS = [
+  { label: 'Este mês',    fn: () => ({ start: toDateStr(startOfMonth(new Date())), end: toDateStr(endOfDay(new Date())) }) },
+  { label: 'Mês anterior', fn: () => {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+    return { start: toDateStr(startOfMonth(d)), end: toDateStr(new Date(d.getFullYear(), d.getMonth() + 1, 0)) };
+  }},
+  { label: 'Este ano',    fn: () => ({ start: `${new Date().getFullYear()}-01-01`, end: toDateStr(endOfDay(new Date())) }) },
+  { label: 'Tudo',        fn: () => ({ start: '', end: '' }) },
+];
+
+const PAY_LABEL:  Record<string, string>        = { CARD: 'Cartão', PIX: 'Pix', CASH: 'Dinheiro', MIXED: 'Misto' };
+const PAY_ICON:   Record<string, React.ReactNode> = {
   CARD: <CreditCard size={12} />, PIX: <Smartphone size={12} />,
   CASH: <Banknote size={12} />,   MIXED: <DollarSign size={12} />,
 };
@@ -46,9 +56,9 @@ const SALE_STATUS_LABEL: Record<string, string> = {
   PENDING: 'Pendente', PAID: 'Pago', PARTIAL: 'Parcial', CANCELLED: 'Cancelado',
 };
 const SALE_STATUS_CLS: Record<string, string> = {
-  PENDING: 'bg-amber-50 text-amber-700',
-  PAID:    'bg-emerald-50 text-emerald-700',
-  PARTIAL: 'bg-blue-50 text-blue-700',
+  PENDING:   'bg-amber-50 text-amber-700',
+  PAID:      'bg-emerald-50 text-emerald-700',
+  PARTIAL:   'bg-blue-50 text-blue-700',
   CANCELLED: 'bg-slate-100 text-slate-500',
 };
 const PIPELINE_COLORS: Record<string, string> = {
@@ -57,11 +67,19 @@ const PIPELINE_COLORS: Record<string, string> = {
 const PIPELINE_LABELS: Record<string, string> = {
   DRAFT: 'Rascunho', PENDING: 'Pendente', APPROVED: 'Aprovado', REJECTED: 'Rejeitado',
 };
-const ABC_COLORS: Record<string, string> = {
-  A: '#1a2e5a', B: '#b8935a', C: '#94a3b8',
+const ABC_COLORS: Record<string, string> = { A: '#1a2e5a', B: '#b8935a', C: '#94a3b8' };
+const STOCK_STATUS: Record<string, { label: string; cls: string; dot: string }> = {
+  OK:       { label: 'Normal',   cls: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+  LOW:      { label: 'Baixo',    cls: 'bg-amber-50 text-amber-700',     dot: 'bg-amber-500'   },
+  CRITICAL: { label: 'Crítico',  cls: 'bg-red-50 text-red-700',         dot: 'bg-red-500'     },
+  OUT:      { label: 'Zerado',   cls: 'bg-red-100 text-red-800',        dot: 'bg-red-700'     },
+  NO_STOCK: { label: 'Não cad.', cls: 'bg-slate-100 text-slate-400',   dot: 'bg-slate-300'   },
+};
+const TYPE_PT: Record<string, string> = {
+  MARBLE: 'Mármore', GRANITE: 'Granito', QUARTZITE: 'Quartzito', OTHER: 'Outro',
 };
 
-// ── small toast ───────────────────────────────────────────────────────────────
+// ── Toast ──────────────────────────────────────────────────────────────────────
 function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error'; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, [onClose]);
   return (
@@ -77,7 +95,7 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error';
   );
 }
 
-// ── KPI card ──────────────────────────────────────────────────────────────────
+// ── KPI card ───────────────────────────────────────────────────────────────────
 function KPICard({ label, value, sub, icon: Icon, color }: {
   label: string; value: string | number; sub?: string;
   icon: React.ElementType; color: string;
@@ -98,16 +116,75 @@ function KPICard({ label, value, sub, icon: Icon, color }: {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Date range bar ─────────────────────────────────────────────────────────────
+function DateRangeBar({ start, end, onChange }: {
+  start: string; end: string;
+  onChange: (range: { start: string; end: string }) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-3">
+      <Calendar size={15} className="text-slate-400 shrink-0" />
+      <span className="text-xs text-slate-500 font-medium">Período:</span>
+
+      {/* Quick presets */}
+      {PRESETS.map(p => {
+        const v = p.fn();
+        const active = v.start === start && v.end === end;
+        return (
+          <button
+            key={p.label}
+            onClick={() => onChange(p.fn())}
+            className={clsx(
+              'px-3 py-1 rounded-lg text-xs font-medium transition-colors',
+              active
+                ? 'bg-navy-700 text-white'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            )}
+          >
+            {p.label}
+          </button>
+        );
+      })}
+
+      <div className="flex items-center gap-1.5 ml-auto">
+        <input
+          type="date"
+          value={start}
+          onChange={e => onChange({ start: e.target.value, end })}
+          className="input py-1 text-xs w-36"
+        />
+        <span className="text-slate-400 text-xs">→</span>
+        <input
+          type="date"
+          value={end}
+          onChange={e => onChange({ start, end: e.target.value })}
+          className="input py-1 text-xs w-36"
+        />
+        {(start || end) && (
+          <button onClick={() => onChange({ start: '', end: '' })} className="text-slate-400 hover:text-slate-600 p-1">
+            <X size={13} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 export default function ReportsPage() {
-  const [tab, setTab] = useState<Tab>('overview');
+  const today = toDateStr(endOfDay(new Date()));
+  const thisMonthStart = toDateStr(startOfMonth(new Date()));
+
+  const [tab, setTab]     = useState<Tab>('overview');
+  const [dateRange, setDateRange] = useState({ start: thisMonthStart, end: today });
 
   // data
-  const [sales, setSales]           = useState<Sale[]>([]);
-  const [financial, setFinancial]   = useState<FinancialEntry[]>([]);
-  const [pipeline, setPipeline]     = useState<{ status: string; count: number; total: number }[]>([]);
-  const [abcData, setAbcData]       = useState<{ name: string; type: string; revenue: number; revenuePct: number; cumPct: number; curve: string; area: number }[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [sales, setSales]         = useState<Sale[]>([]);
+  const [financial, setFinancial] = useState<FinancialEntry[]>([]);
+  const [pipeline, setPipeline]   = useState<{ status: string; count: number; total: number }[]>([]);
+  const [abcData, setAbcData]     = useState<{ name: string; type: string; revenue: number; revenuePct: number; cumPct: number; curve: string; area: number }[]>([]);
+  const [stockData, setStockData] = useState<StockItem[]>([]);
+  const [loading, setLoading]     = useState(true);
 
   // financial entry form
   const [showEntryForm, setShowEntryForm] = useState(false);
@@ -115,23 +192,35 @@ export default function ReportsPage() {
   const [savingEntry, setSavingEntry] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
+  // stock filter
+  const [stockFilter, setStockFilter] = useState<'ALL' | 'CRITICAL' | 'LOW' | 'OUT'>('ALL');
+
+  const qs = useCallback(() => {
+    const p = new URLSearchParams();
+    if (dateRange.start) p.set('startDate', dateRange.start);
+    if (dateRange.end)   p.set('endDate',   dateRange.end);
+    return p.toString() ? '?' + p.toString() : '';
+  }, [dateRange]);
+
   const loadAll = useCallback(() => {
     setLoading(true);
+    const q = qs();
     Promise.all([
-      api.get('/sales').then(r => setSales(r.data.data)),
-      api.get('/financial').then(r => setFinancial(r.data.data)),
-      api.get('/reports/sales/pipeline').then(r => setPipeline(r.data.data)),
-      api.get('/reports/sales/abc').then(r => setAbcData(r.data.data)),
+      api.get(`/sales${q}`).then(r => setSales(r.data.data)),
+      api.get(`/financial${q}`).then(r => setFinancial(r.data.data)),
+      api.get(`/reports/sales/pipeline${q}`).then(r => setPipeline(r.data.data)),
+      api.get(`/reports/sales/abc${q}`).then(r => setAbcData(r.data.data)),
+      api.get(`/reports/stock${q}`).then(r => setStockData(r.data.data)),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [qs]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // ── derived stats ────────────────────────────────────────────────────────
-  const approvedSales   = sales.filter(s => s.status !== 'CANCELLED');
-  const totalRevenue    = approvedSales.reduce((s, x) => s + x.totalAmount, 0);
-  const paidRevenue     = sales.filter(s => s.status === 'PAID').reduce((s, x) => s + x.totalAmount, 0);
-  const pendingRevenue  = sales.filter(s => s.status === 'PENDING').reduce((s, x) => s + x.totalAmount, 0);
+  // ── derived stats ─────────────────────────────────────────────────────────
+  const activeSales    = sales.filter(s => s.status !== 'CANCELLED');
+  const totalRevenue   = activeSales.reduce((s, x) => s + x.totalAmount, 0);
+  const paidRevenue    = sales.filter(s => s.status === 'PAID').reduce((s, x) => s + x.totalAmount, 0);
+  const pendingRevenue = sales.filter(s => s.status === 'PENDING').reduce((s, x) => s + x.totalAmount, 0);
 
   const totalReceivable = financial.filter(f => f.type === 'RECEIVABLE').reduce((s, x) => s + x.amount, 0);
   const totalPayable    = financial.filter(f => f.type === 'PAYABLE').reduce((s, x) => s + x.amount, 0);
@@ -139,29 +228,38 @@ export default function ReportsPage() {
   // group by client
   type ClientRow = { name: string; count: number; total: number; paid: number; pending: number };
   const byClient: ClientRow[] = Object.values(
-    approvedSales.reduce<Record<string, ClientRow>>((acc, s) => {
+    activeSales.reduce<Record<string, ClientRow>>((acc, s) => {
       const name = s.clientName || s.budget?.project?.clientName || 'Não informado';
       if (!acc[name]) acc[name] = { name, count: 0, total: 0, paid: 0, pending: 0 };
       acc[name].count++;
       acc[name].total += s.totalAmount;
-      if (s.status === 'PAID')    acc[name].paid    += s.totalAmount;
-      else                        acc[name].pending += s.totalAmount;
+      if (s.status === 'PAID') acc[name].paid    += s.totalAmount;
+      else                     acc[name].pending += s.totalAmount;
       return acc;
     }, {})
   ).sort((a, b) => b.total - a.total);
 
-  // monthly revenue from sales
+  // monthly revenue
   const monthlyMap: Record<string, number> = {};
-  for (const s of approvedSales) {
-    const key = s.createdAt.substring(0, 7); // YYYY-MM
+  for (const s of activeSales) {
+    const key = s.createdAt.substring(0, 7);
     monthlyMap[key] = (monthlyMap[key] || 0) + s.totalAmount;
   }
   const monthlyData = Object.entries(monthlyMap)
     .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-6)
     .map(([month, total]) => ({ month: fmtMonth(month), total }));
 
-  // ── financial entry handlers ─────────────────────────────────────────────
+  // stock summary
+  const criticalCount = stockData.filter(m => m.status === 'CRITICAL' || m.status === 'OUT').length;
+  const lowCount      = stockData.filter(m => m.status === 'LOW').length;
+  const totalStockVal = stockData.reduce((s, m) => s + m.stock * m.pricePerM2, 0);
+  const filteredStock = stockFilter === 'ALL'
+    ? stockData
+    : stockFilter === 'CRITICAL'
+      ? stockData.filter(m => m.status === 'CRITICAL' || m.status === 'OUT')
+      : stockData.filter(m => m.status === stockFilter);
+
+  // ── financial entry handlers ──────────────────────────────────────────────
   const saveEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingEntry(true);
@@ -177,9 +275,8 @@ export default function ReportsPage() {
       setShowEntryForm(false);
       setEntryForm({ type: 'PAYABLE', description: '', amount: '', dueDate: '', category: '' });
       loadAll();
-    } catch {
-      setToast({ msg: 'Erro ao salvar lançamento.', type: 'error' });
-    } finally { setSavingEntry(false); }
+    } catch { setToast({ msg: 'Erro ao salvar lançamento.', type: 'error' }); }
+    finally   { setSavingEntry(false); }
   };
 
   const markPaid = async (entry: FinancialEntry) => {
@@ -199,20 +296,33 @@ export default function ReportsPage() {
     } catch { setToast({ msg: 'Erro ao excluir.', type: 'error' }); }
   };
 
+  const periodLabel = dateRange.start && dateRange.end
+    ? `${format(new Date(dateRange.start + 'T12:00:00'), 'dd/MM/yyyy')} – ${format(new Date(dateRange.end + 'T12:00:00'), 'dd/MM/yyyy')}`
+    : 'Todos os períodos';
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-navy-700" />
     </div>
   );
 
-  // ── render ────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5 max-w-7xl mx-auto">
-      {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">Relatórios</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Análise comercial e financeira</p>
+    <div className="space-y-4 max-w-7xl mx-auto">
+
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Relatórios</h1>
+          <p className="text-slate-500 text-sm mt-0.5">{periodLabel}</p>
+        </div>
       </div>
+
+      {/* Date range bar */}
+      <DateRangeBar
+        start={dateRange.start}
+        end={dateRange.end}
+        onChange={setDateRange}
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit overflow-x-auto">
@@ -221,11 +331,16 @@ export default function ReportsPage() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={clsx(
-              'px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all',
+              'px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all relative',
               tab === t.key ? 'bg-white text-navy-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
             )}
           >
             {t.label}
+            {t.key === 'stock' && criticalCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center font-bold">
+                {criticalCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -233,43 +348,40 @@ export default function ReportsPage() {
       {/* ── OVERVIEW ── */}
       {tab === 'overview' && (
         <div className="space-y-5">
-          {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <KPICard label="Total em Vendas"     value={brl(totalRevenue)}   sub={`${approvedSales.length} vendas`}     icon={TrendingUp}  color="text-navy-600 bg-navy-50" />
-            <KPICard label="Receita Recebida"    value={brl(paidRevenue)}    sub="status: pago"                          icon={CheckCircle2} color="text-emerald-600 bg-emerald-50" />
-            <KPICard label="Aguardando Pgto"     value={brl(pendingRevenue)} sub={`${sales.filter(s=>s.status==='PENDING').length} pendentes`} icon={Clock} color="text-amber-600 bg-amber-50" />
-            <KPICard label="Orçamentos Enviados" value={pipeline.find(p=>p.status==='PENDING')?.count ?? 0} sub="aguardando aprovação" icon={FileText} color="text-purple-600 bg-purple-50" />
+            <KPICard label="Total em Vendas"     value={brl(totalRevenue)}   sub={`${activeSales.length} venda${activeSales.length !== 1 ? 's' : ''}`}    icon={TrendingUp}  color="text-navy-600 bg-navy-50" />
+            <KPICard label="Receita Recebida"    value={brl(paidRevenue)}    sub="status: pago"                                                             icon={CheckCircle2} color="text-emerald-600 bg-emerald-50" />
+            <KPICard label="Aguardando Pgto"     value={brl(pendingRevenue)} sub={`${sales.filter(s => s.status === 'PENDING').length} pendente${sales.filter(s => s.status === 'PENDING').length !== 1 ? 's' : ''}`} icon={Clock} color="text-amber-600 bg-amber-50" />
+            <KPICard label="Em Orçamento"        value={pipeline.find(p => p.status === 'PENDING')?.count ?? 0} sub="aguardando aprovação" icon={FileText} color="text-purple-600 bg-purple-50" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Monthly revenue */}
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-800 mb-4">Receita Mensal</h3>
+              <h3 className="font-semibold text-slate-800 mb-4">Receita no Período</h3>
               {monthlyData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={monthlyData} margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 10 }} tickFormatter={v => 'R$' + (v/1000).toFixed(0) + 'k'} width={50} />
+                    <YAxis tick={{ fontSize: 10 }} tickFormatter={v => 'R$' + (v / 1000).toFixed(0) + 'k'} width={50} />
                     <Tooltip formatter={(v: number) => [brl(v), 'Receita']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Bar dataKey="total" fill="#1a2e5a" radius={[4,4,0,0]} />
+                    <Bar dataKey="total" fill="#1a2e5a" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-48 flex items-center justify-center text-slate-400 text-sm">Nenhuma venda ainda</div>
+                <div className="h-48 flex items-center justify-center text-slate-400 text-sm">Sem vendas no período</div>
               )}
             </div>
 
-            {/* Sales by payment method */}
+            {/* Payment method pie */}
             <div className="card p-5">
               <h3 className="font-semibold text-slate-800 mb-4">Formas de Pagamento</h3>
               {(() => {
                 const byMethod: Record<string, number> = {};
-                for (const s of approvedSales) {
-                  byMethod[s.paymentMethod] = (byMethod[s.paymentMethod] || 0) + s.totalAmount;
-                }
+                for (const s of activeSales) byMethod[s.paymentMethod] = (byMethod[s.paymentMethod] || 0) + s.totalAmount;
                 const pieData = Object.entries(byMethod).map(([k, v]) => ({ name: PAY_LABEL[k] || k, value: v }));
-                const COLORS  = ['#1a2e5a','#b8935a','#10b981','#f59e0b'];
+                const COLORS  = ['#1a2e5a', '#b8935a', '#10b981', '#f59e0b'];
                 return pieData.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
@@ -281,19 +393,20 @@ export default function ReportsPage() {
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-48 flex items-center justify-center text-slate-400 text-sm">Nenhuma venda ainda</div>
+                  <div className="h-48 flex items-center justify-center text-slate-400 text-sm">Sem vendas no período</div>
                 );
               })()}
             </div>
           </div>
 
-          {/* Recent sales */}
+          {/* Recent sales table */}
           <div className="card overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-              <h3 className="font-semibold text-slate-800">Vendas Recentes</h3>
+              <h3 className="font-semibold text-slate-800">Vendas no Período</h3>
+              <span className="text-xs text-slate-400">{activeSales.length} registro{activeSales.length !== 1 ? 's' : ''}</span>
             </div>
             {sales.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 text-sm">Nenhuma venda registrada</div>
+              <div className="py-12 text-center text-slate-400 text-sm">Nenhuma venda no período selecionado</div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
@@ -307,7 +420,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {sales.slice(0, 10).map(s => (
+                  {sales.slice(0, 15).map(s => (
                     <tr key={s.id} className="hover:bg-slate-50">
                       <td className="px-5 py-3 font-medium text-slate-800">
                         <Link to={`/orcamentos/${s.budgetId}`} className="hover:text-navy-700 flex items-center gap-1">
@@ -330,7 +443,7 @@ export default function ReportsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-400 text-xs hidden lg:table-cell">
-                        {format(new Date(s.createdAt), 'dd MMM yyyy', { locale: ptBR })}
+                        {format(new Date(s.createdAt), 'dd/MM/yyyy', { locale: ptBR })}
                       </td>
                     </tr>
                   ))}
@@ -345,9 +458,9 @@ export default function ReportsPage() {
       {tab === 'clients' && (
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <KPICard label="Total de Clientes" value={byClient.length}          sub="com vendas"           icon={Users}      color="text-navy-600 bg-navy-50" />
-            <KPICard label="Maior Cliente"      value={byClient[0]?.name || '—'} sub={byClient[0] ? brl(byClient[0].total) : ''} icon={TrendingUp} color="text-emerald-600 bg-emerald-50" />
-            <KPICard label="Ticket Médio"       value={approvedSales.length > 0 ? brl(totalRevenue / approvedSales.length) : '—'} icon={DollarSign} color="text-amber-600 bg-amber-50" />
+            <KPICard label="Clientes no Período" value={byClient.length}           sub="com vendas"           icon={Users}      color="text-navy-600 bg-navy-50" />
+            <KPICard label="Maior Cliente"        value={byClient[0]?.name || '—'} sub={byClient[0] ? brl(byClient[0].total) : ''} icon={TrendingUp} color="text-emerald-600 bg-emerald-50" />
+            <KPICard label="Ticket Médio"         value={activeSales.length > 0 ? brl(totalRevenue / activeSales.length) : '—'} icon={DollarSign} color="text-amber-600 bg-amber-50" />
           </div>
 
           <div className="card overflow-hidden">
@@ -355,7 +468,7 @@ export default function ReportsPage() {
               <h3 className="font-semibold text-slate-800">Vendas por Cliente</h3>
             </div>
             {byClient.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 text-sm">Nenhuma venda registrada</div>
+              <div className="py-12 text-center text-slate-400 text-sm">Nenhuma venda no período selecionado</div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
@@ -377,12 +490,9 @@ export default function ReportsPage() {
                       <td className="px-4 py-3 text-right text-emerald-600 hidden sm:table-cell">{brl(c.paid)}</td>
                       <td className="px-4 py-3 text-right text-amber-600 hidden sm:table-cell">{brl(c.pending)}</td>
                       <td className="px-5 py-3">
-                        {/* progress bar */}
                         <div className="w-full bg-slate-100 rounded-full h-1.5">
-                          <div
-                            className="bg-emerald-500 h-1.5 rounded-full transition-all"
-                            style={{ width: c.total > 0 ? `${(c.paid / c.total) * 100}%` : '0%' }}
-                          />
+                          <div className="bg-emerald-500 h-1.5 rounded-full"
+                            style={{ width: c.total > 0 ? `${(c.paid / c.total) * 100}%` : '0%' }} />
                         </div>
                       </td>
                     </tr>
@@ -397,41 +507,41 @@ export default function ReportsPage() {
       {/* ── PIPELINE ── */}
       {tab === 'pipeline' && (
         <div className="space-y-5">
-          {/* Funnel bars */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {pipeline.map(p => (
               <div key={p.status} className="card p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold uppercase tracking-wide"
-                    style={{ color: PIPELINE_COLORS[p.status] }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: PIPELINE_COLORS[p.status] }}>
                     {PIPELINE_LABELS[p.status]}
                   </span>
                   <span className="text-2xl font-bold text-slate-800">{p.count}</span>
                 </div>
                 <p className="text-sm font-medium text-slate-600">{brl(p.total)}</p>
-                <div className="mt-2 h-1 rounded-full" style={{ backgroundColor: PIPELINE_COLORS[p.status] + '30' }}>
-                  <div className="h-1 rounded-full" style={{
+                <div className="mt-2 h-1 rounded-full overflow-hidden bg-slate-100">
+                  <div className="h-1 rounded-full transition-all" style={{
                     backgroundColor: PIPELINE_COLORS[p.status],
-                    width: `${pipeline[0]?.count > 0 ? (p.count / pipeline[0].count) * 100 : 0}%`
+                    width: `${pipeline.reduce((s, x) => s + x.count, 0) > 0
+                      ? (p.count / pipeline.reduce((s, x) => s + x.count, 0)) * 100
+                      : 0}%`
                   }} />
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Funnel chart */}
           <div className="card p-5">
-            <h3 className="font-semibold text-slate-800 mb-4">Distribuição do Pipeline</h3>
+            <h3 className="font-semibold text-slate-800 mb-4">Volume por Etapa</h3>
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={pipeline.map(p => ({ name: PIPELINE_LABELS[p.status], value: p.total, count: p.count, fill: PIPELINE_COLORS[p.status] }))} layout="vertical">
+              <BarChart
+                data={pipeline.map(p => ({ name: PIPELINE_LABELS[p.status], value: p.total, fill: PIPELINE_COLORS[p.status] }))}
+                layout="vertical"
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => 'R$' + (v/1000).toFixed(0) + 'k'} />
+                <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => 'R$' + (v / 1000).toFixed(0) + 'k'} />
                 <YAxis dataKey="name" type="category" tick={{ fontSize: 12 }} width={80} />
                 <Tooltip formatter={(v: number) => [brl(v), 'Valor']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                <Bar dataKey="value" radius={[0,4,4,0]}>
-                  {pipeline.map(p => (
-                    <Cell key={p.status} fill={PIPELINE_COLORS[p.status]} />
-                  ))}
+                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                  {pipeline.map(p => <Cell key={p.status} fill={PIPELINE_COLORS[p.status]} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -447,14 +557,14 @@ export default function ReportsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="font-semibold text-slate-800">Taxa de Conversão</h3>
-                    <p className="text-sm text-slate-500 mt-1">Orçamentos aprovados / total criados</p>
+                    <p className="text-sm text-slate-500 mt-1">Orçamentos aprovados / total criados no período</p>
                   </div>
                   <div className="text-right">
                     <p className="text-3xl font-bold text-navy-700">{rate.toFixed(1)}%</p>
                     <p className="text-xs text-slate-400">{approved} de {total}</p>
                   </div>
                 </div>
-                <div className="mt-4 h-2 bg-slate-100 rounded-full">
+                <div className="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div className="h-2 bg-emerald-500 rounded-full transition-all" style={{ width: `${rate}%` }} />
                 </div>
               </div>
@@ -467,7 +577,7 @@ export default function ReportsPage() {
       {tab === 'abc' && (
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {(['A','B','C'] as const).map(curve => {
+            {(['A', 'B', 'C'] as const).map(curve => {
               const items = abcData.filter(m => m.curve === curve);
               const total = items.reduce((s, m) => s + m.revenue, 0);
               return (
@@ -490,12 +600,10 @@ export default function ReportsPage() {
 
           <div className="card overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200">
-              <h3 className="font-semibold text-slate-800">Materiais por Receita</h3>
+              <h3 className="font-semibold text-slate-800">Materiais por Receita — Orçamentos Aprovados no Período</h3>
             </div>
             {abcData.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 text-sm">
-                Sem dados — aprove orçamentos para ver a curva ABC
-              </div>
+              <div className="py-12 text-center text-slate-400 text-sm">Sem orçamentos aprovados no período selecionado</div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
@@ -519,7 +627,7 @@ export default function ReportsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 font-medium text-slate-800">{m.name}</td>
-                      <td className="px-4 py-3 text-slate-500 hidden md:table-cell text-xs">{m.type}</td>
+                      <td className="px-4 py-3 text-slate-500 hidden md:table-cell text-xs">{TYPE_PT[m.type] || m.type}</td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">{brl(m.revenue)}</td>
                       <td className="px-4 py-3 text-right text-slate-500 hidden sm:table-cell">{m.revenuePct.toFixed(1)}%</td>
                       <td className="px-4 py-3 text-right text-slate-500 hidden sm:table-cell">{m.cumPct.toFixed(1)}%</td>
@@ -537,25 +645,171 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* ── FINANCIAL ── */}
-      {tab === 'financial' && (
+      {/* ── ESTOQUE ── */}
+      {tab === 'stock' && (
         <div className="space-y-5">
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <KPICard label="Contas a Receber"  value={brl(totalReceivable - financial.filter(f=>f.type==='RECEIVABLE'&&f.status==='PAID').reduce((s,x)=>s+x.amount,0))} sub="saldo pendente" icon={ChevronUp}  color="text-emerald-600 bg-emerald-50" />
-            <KPICard label="Contas a Pagar"    value={brl(totalPayable    - financial.filter(f=>f.type==='PAYABLE'   &&f.status==='PAID').reduce((s,x)=>s+x.amount,0))} sub="saldo pendente" icon={DollarSign} color="text-red-600 bg-red-50" />
-            <KPICard label="Total Recebido"    value={brl(financial.filter(f=>f.type==='RECEIVABLE'&&f.status==='PAID').reduce((s,x)=>s+x.amount,0))} icon={CheckCircle2} color="text-navy-600 bg-navy-50" />
-            <KPICard label="Total Pago"        value={brl(financial.filter(f=>f.type==='PAYABLE'&&f.status==='PAID').reduce((s,x)=>s+x.amount,0))} icon={Banknote} color="text-slate-600 bg-slate-100" />
+            <KPICard label="Materiais Cadastrados" value={stockData.length}     sub={`${stockData.filter(m => m.active).length} ativos`}          icon={Package}       color="text-navy-600 bg-navy-50" />
+            <KPICard label="Valor do Estoque"       value={brl(totalStockVal)} sub="estoque atual × preço/m²"                                     icon={DollarSign}    color="text-emerald-600 bg-emerald-50" />
+            <KPICard label="Alertas Críticos"       value={criticalCount}       sub="estoque zerado ou crítico"                                    icon={AlertTriangle} color={criticalCount > 0 ? 'text-red-600 bg-red-50' : 'text-slate-500 bg-slate-100'} />
+            <KPICard label="Estoque Baixo"          value={lowCount}            sub="abaixo de 50% do estoque"                                     icon={BarChart3}     color={lowCount > 0 ? 'text-amber-600 bg-amber-50' : 'text-slate-500 bg-slate-100'} />
           </div>
 
-          {/* Action */}
+          {/* Alert banner */}
+          {criticalCount > 0 && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+              <AlertTriangle size={16} className="shrink-0" />
+              <span>
+                <strong>{criticalCount} material{criticalCount !== 1 ? 'is' : ''}</strong> com estoque crítico ou zerado — reposição necessária.
+              </span>
+            </div>
+          )}
+
+          {/* Filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-medium">Filtrar:</span>
+            {([
+              { key: 'ALL',      label: 'Todos'    },
+              { key: 'CRITICAL', label: 'Crítico'  },
+              { key: 'LOW',      label: 'Baixo'    },
+              { key: 'OUT',      label: 'Zerado'   },
+            ] as const).map(f => (
+              <button
+                key={f.key}
+                onClick={() => setStockFilter(f.key)}
+                className={clsx(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  stockFilter === f.key ? 'bg-navy-700 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Stock table */}
+          <div className="card overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-semibold text-slate-800">Posição de Estoque</h3>
+              <p className="text-xs text-slate-400">
+                Consumo = orçamentos aprovados no período · Orçado = todos os status
+              </p>
+            </div>
+            {filteredStock.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 text-sm">Nenhum material encontrado</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left px-5 py-3 text-xs font-medium text-slate-500">Material</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 hidden md:table-cell">Tipo</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-slate-500">Estoque</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-slate-500 hidden sm:table-cell">Consumido</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-slate-500 hidden sm:table-cell">Orçado</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-slate-500">Disponível</th>
+                    <th className="text-center px-4 py-3 text-xs font-medium text-slate-500">Status</th>
+                    <th className="px-4 py-3 w-28 hidden lg:table-cell"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredStock.map(m => {
+                    const st = STOCK_STATUS[m.status];
+                    const barPct = m.stock > 0 && m.stockPct !== null
+                      ? Math.max(0, Math.min(100, m.stockPct))
+                      : 0;
+                    const barColor = m.status === 'OK' ? '#10b981'
+                      : m.status === 'LOW' ? '#f59e0b'
+                      : '#ef4444';
+
+                    return (
+                      <tr key={m.id} className={clsx('hover:bg-slate-50', !m.active && 'opacity-50')}>
+                        <td className="px-5 py-3">
+                          <div className="font-medium text-slate-800">{m.name}</div>
+                          {m.color && <div className="text-xs text-slate-400">{m.color}{m.finish ? ` · ${m.finish}` : ''}</div>}
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          <span className="text-xs text-slate-500">{TYPE_PT[m.type] || m.type}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-slate-700 font-medium">
+                          {m.stock > 0 ? `${m.stock.toFixed(2)} m²` : <span className="text-slate-400">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-right text-slate-500 hidden sm:table-cell">
+                          {m.consumedArea > 0 ? `${m.consumedArea.toFixed(2)} m²` : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right text-slate-500 hidden sm:table-cell">
+                          {m.quotedArea > 0 ? `${m.quotedArea.toFixed(2)} m²` : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold">
+                          <span className={clsx(
+                            m.status === 'OUT' || m.status === 'CRITICAL' ? 'text-red-600' :
+                            m.status === 'LOW' ? 'text-amber-600' : 'text-slate-800'
+                          )}>
+                            {m.stock > 0 ? `${m.remaining.toFixed(2)} m²` : <span className="text-slate-400">—</span>}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={clsx('inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium', st.cls)}>
+                            <span className={clsx('w-1.5 h-1.5 rounded-full', st.dot)} />
+                            {st.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 hidden lg:table-cell">
+                          {m.stock > 0 && (
+                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                              <div className="h-1.5 rounded-full transition-all" style={{ width: `${barPct}%`, backgroundColor: barColor }} />
+                            </div>
+                          )}
+                          {m.supplier && <div className="text-xs text-slate-400 mt-1 truncate">{m.supplier}</div>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── FINANCIAL ── */}
+      {tab === 'financial' && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <KPICard
+              label="A Receber (pendente)"
+              value={brl(totalReceivable - financial.filter(f => f.type === 'RECEIVABLE' && f.status === 'PAID').reduce((s, x) => s + x.amount, 0))}
+              sub="no período"
+              icon={ChevronUp}
+              color="text-emerald-600 bg-emerald-50"
+            />
+            <KPICard
+              label="A Pagar (pendente)"
+              value={brl(totalPayable - financial.filter(f => f.type === 'PAYABLE' && f.status === 'PAID').reduce((s, x) => s + x.amount, 0))}
+              sub="no período"
+              icon={DollarSign}
+              color="text-red-600 bg-red-50"
+            />
+            <KPICard
+              label="Total Recebido"
+              value={brl(financial.filter(f => f.type === 'RECEIVABLE' && f.status === 'PAID').reduce((s, x) => s + x.amount, 0))}
+              icon={CheckCircle2}
+              color="text-navy-600 bg-navy-50"
+            />
+            <KPICard
+              label="Total Pago"
+              value={brl(financial.filter(f => f.type === 'PAYABLE' && f.status === 'PAID').reduce((s, x) => s + x.amount, 0))}
+              icon={Banknote}
+              color="text-slate-600 bg-slate-100"
+            />
+          </div>
+
           <div className="flex justify-end">
             <button onClick={() => setShowEntryForm(v => !v)} className="btn-primary text-sm">
               <Plus size={14} /> Novo Lançamento
             </button>
           </div>
 
-          {/* Entry form */}
           {showEntryForm && (
             <div className="card p-5">
               <div className="flex items-center justify-between mb-4">
@@ -598,7 +852,6 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {/* Receivable */}
           <FinancialTable
             title="Contas a Receber"
             entries={financial.filter(f => f.type === 'RECEIVABLE')}
@@ -606,8 +859,6 @@ export default function ReportsPage() {
             onDelete={deleteEntry}
             accent="emerald"
           />
-
-          {/* Payable */}
           <FinancialTable
             title="Contas a Pagar"
             entries={financial.filter(f => f.type === 'PAYABLE')}
@@ -623,7 +874,7 @@ export default function ReportsPage() {
   );
 }
 
-// ── FinancialTable sub-component ──────────────────────────────────────────────
+// ── FinancialTable ──────────────────────────────────────────────────────────────
 function FinancialTable({ title, entries, onMarkPaid, onDelete, accent }: {
   title: string;
   entries: FinancialEntry[];
@@ -653,7 +904,7 @@ function FinancialTable({ title, entries, onMarkPaid, onDelete, accent }: {
         </span>
       </div>
       {entries.length === 0 ? (
-        <div className="py-10 text-center text-slate-400 text-sm">Nenhum lançamento</div>
+        <div className="py-10 text-center text-slate-400 text-sm">Nenhum lançamento no período</div>
       ) : (
         <table className="w-full text-sm">
           <thead>

@@ -76,6 +76,7 @@ export interface Material {
   finish?: 'POLISHED' | 'BRUSHED' | 'HONED' | 'NATURAL';
   thickness?: number;
   pricePerM2: number;
+  stock: number;
   unit: string;
   active: boolean;
   description?: string;
@@ -241,6 +242,24 @@ export interface KPIRecord {
   resultado: number;
   notes?: string;
   createdAt: string;
+}
+
+export interface StockItem {
+  id: string;
+  name: string;
+  type: string;
+  color?: string;
+  finish?: string;
+  supplier?: string;
+  pricePerM2: number;
+  stock: number;
+  consumedArea: number;
+  consumedRev: number;
+  quotedArea: number;
+  remaining: number;
+  stockPct: number | null;
+  status: 'NO_STOCK' | 'OUT' | 'CRITICAL' | 'LOW' | 'OK';
+  active: boolean;
 }
 
 export interface ApiResponse<T> {

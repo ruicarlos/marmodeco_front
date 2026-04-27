@@ -23,14 +23,15 @@ function MaterialModal({ material, onClose, onSaved }: {
 }) {
   const isEdit = !!material;
   const [form, setForm] = useState({
-    name: material?.name || '',
-    type: material?.type || 'MARBLE',
-    color: material?.color || '',
-    finish: material?.finish || 'POLISHED',
-    thickness: material?.thickness?.toString() || '2.0',
+    name:       material?.name              || '',
+    type:       material?.type              || 'MARBLE',
+    color:      material?.color             || '',
+    finish:     material?.finish            || 'POLISHED',
+    thickness:  material?.thickness?.toString() || '2.0',
     pricePerM2: material?.pricePerM2?.toString() || '',
-    description: material?.description || '',
-    supplier: material?.supplier || '',
+    stock:      material?.stock?.toString()      || '0',
+    description: material?.description     || '',
+    supplier:   material?.supplier         || '',
   });
   const [loading, setLoading] = useState(false);
 
@@ -94,6 +95,10 @@ function MaterialModal({ material, onClose, onSaved }: {
             <div>
               <label className="label">Preço por m² (R$) *</label>
               <input className="input" type="number" step="0.01" value={form.pricePerM2} onChange={e => setForm(f => ({ ...f, pricePerM2: e.target.value }))} required placeholder="0.00" />
+            </div>
+            <div>
+              <label className="label">Estoque (m²)</label>
+              <input className="input" type="number" step="0.01" min="0" value={form.stock} onChange={e => setForm(f => ({ ...f, stock: e.target.value }))} placeholder="0.00" />
             </div>
             <div>
               <label className="label">Fornecedor</label>
@@ -220,8 +225,13 @@ export default function MaterialsPage() {
                 </div>
               </div>
 
-              {m.supplier && <p className="text-xs text-slate-400 mt-2 border-t border-slate-100 pt-2">Fornecedor: {m.supplier}</p>}
-              {m.thickness && <p className="text-xs text-slate-400">Espessura: {m.thickness} cm</p>}
+              <div className="mt-3 pt-2 border-t border-slate-100 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-400">
+                {m.stock > 0
+                  ? <span className="text-emerald-600 font-medium">Estoque: {m.stock.toFixed(2)} m²</span>
+                  : <span className="text-slate-400">Sem estoque cadastrado</span>}
+                {m.supplier  && <span>· {m.supplier}</span>}
+                {m.thickness && <span>· {m.thickness} cm</span>}
+              </div>
             </div>
           ))}
         </div>
