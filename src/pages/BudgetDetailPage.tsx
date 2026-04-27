@@ -610,7 +610,7 @@ export default function BudgetDetailPage() {
                   <select className="input text-sm" value={adjForm.valueType}
                     onChange={e => setAdjForm(f => ({ ...f, valueType: e.target.value }))}>
                     <option value="FIXED">R$ Fixo</option>
-                    <option value="PERCENT">% Mat.</option>
+                    <option value="PERCENT">% Percentual</option>
                   </select>
                   <input className="input text-sm" type="number" step="0.01" min="0"
                     placeholder={adjForm.valueType === 'PERCENT' ? '%' : 'R$'}

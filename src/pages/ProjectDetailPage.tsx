@@ -917,7 +917,7 @@ export default function ProjectDetailPage() {
                         <select className="input text-sm" value={adj.valueType}
                           onChange={e => updateAdj(adj._key, { valueType: e.target.value as 'FIXED' | 'PERCENT' })}>
                           <option value="FIXED">R$ Fixo</option>
-                          <option value="PERCENT">% Materiais</option>
+                          <option value="PERCENT">% Percentual</option>
                         </select>
                       </div>
                       <div className="col-span-4 md:col-span-2">
